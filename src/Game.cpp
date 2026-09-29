@@ -1,6 +1,7 @@
 #include "Game.h"
 
 #include "Compass.h"
+#include "Framing.h"
 #include "PEHook.h"
 #include "Reflect.h"
 #include "Settings.h"
@@ -44,8 +45,6 @@ namespace game
 		bool   g_vanillaRecorded = false;
 		std::array<bool, 4> g_vanilla{};
 		bool   g_shoulderLeft = false;
-		bool   g_socketWritten = false;
-		std::array<double, 3> g_socketBase{}, g_socketLast{};
 		std::string g_lastTag;
 		std::vector<std::string> g_tagsSeen;
 		std::uint64_t g_ticks = 0;
@@ -170,29 +169,6 @@ namespace game
 			g_wroteSwitches = false;
 			g_vanillaRecorded = false;
 			g_lockUntil = 0.0;
-		}
-
-		bool Near(const std::array<double, 3>& a, const std::array<double, 3>& b)
-		{
-			return std::abs(a[0] - b[0]) < 0.01 && std::abs(a[1] - b[1]) < 0.01 && std::abs(a[2] - b[2]) < 0.01;
-		}
-
-		// Shoulder swap through the manager's setting data: the game's socket offset is the base, re-based whenever the
-		// game writes a value CCM did not (a state change, a zoom), and CCM writes the mirrored Y on top.
-		void ApplyShoulder(const Objects& o, bool a_enabled)
-		{
-			if (!o.mgr) return;
-			const auto& p = Find(o.mgr, "CurrentCameraSettingData.DesiredSocketOffset");
-			if (!p.Ok()) return;
-			const auto cur = GetVec(o.mgr, p);
-			if (!g_socketWritten || !Near(cur, g_socketLast)) {
-				g_socketBase = cur;
-			}
-			auto target = g_socketBase;
-			if (a_enabled && g_shoulderLeft) target[1] = -target[1];
-			if (!Near(target, cur)) SetVec(o.mgr, p, target);
-			g_socketLast = target;
-			g_socketWritten = true;
 		}
 
 		void RunActions(const Objects& o, settings::Values& a_s)
@@ -341,7 +317,7 @@ namespace game
 				}
 				g_wroteSwitches = true;
 			}
-			ApplyShoulder(o, s.enabled);
+			framing::Apply(o.mgr, s.enabled, g_shoulderLeft, combat, dt);   // offsets, shoulder swap and smoothing
 			// the compass follows the camera while the free camera is on in third person (UCR's CompassBridge does the same)
 			compass::Update(o.ctrl, s.enabled && styleFree && !firstPerson && s.compassFollowsCamera && o.arm && o.move);
 
@@ -379,7 +355,7 @@ namespace game
 				g_snap.vanilla = g_vanilla;
 				g_snap.vanillaRecorded = g_vanillaRecorded;
 				g_snap.shoulderLeft = g_shoulderLeft;
-				g_snap.socketBase = g_socketBase;
+				g_snap.socketBase = framing::SocketBase();
 				if (o.mgr) {
 					g_snap.socketNow = GetVec(o.mgr, Find(o.mgr, "CurrentCameraSettingData.DesiredSocketOffset"));
 					g_snap.desiredArmLength = GetFloat(o.mgr, Find(o.mgr, "CurrentCameraSettingData.DesiredArmLength"));

@@ -45,6 +45,26 @@ namespace settings
 		std::int32_t heightOffsetButton = 0;
 		std::int32_t customGroupButton = 0;
 
+		// [Framing] - where the camera sits, in centimetres ADDED to the game's own value for the state (plan 7.2): 0 = the
+		// unmodded camera. Side mirrors with the shoulder swap.
+		float fmSide = 0.0f;       // -150-150, + = further to the right of the character
+		float fmHeight = 0.0f;     // -100-150
+		float fmDistance = 0.0f;   // -300-600, + = further back
+		bool  fmCombatOwn = false; // 1 = the three below while a weapon is drawn
+		float fmCombatSide = 0.0f;
+		float fmCombatHeight = 0.0f;
+		float fmCombatDistance = 0.0f;
+
+		// [Smoothing] - plan 7.3. -1 = the game's own value for the state.
+		bool         smEaseOffsets = true;     // a new position slides in instead of cutting
+		std::int32_t smOffsetEasing = 15;      // framing::Ease curve, 15 = sine in-out
+		float        smOffsetSeconds = 0.5f;   // 0-5
+		float        smFollowSpeed = -1.0f;    // PositionLagSpeed, 0 = rigid (no position smoothing), -1 = the game's
+		float        smMaxLagDistance = -1.0f; // CameraLagMaxDistance, 0 = no limit
+		float        smRotationPitch = -1.0f;  // RotationLagSpeedPitch, 0 = no rotation smoothing
+		float        smRotationYaw = -1.0f;    // RotationLagSpeedYaw
+		float        smStateBlendSeconds = -1.0f;   // TransitionDuration: the blend between the game's camera states
+
 		// [Selection] - Better Third-Person Selection 1.0.0, merged (plan 13.2; the owner's defaults, 2026-09-29)
 		bool  selEnabled = true;
 		bool  selThirdPerson = true;

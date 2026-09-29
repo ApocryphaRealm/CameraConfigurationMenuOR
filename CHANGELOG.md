@@ -31,6 +31,19 @@ name Camera Configuration Menu. Plan: 4. plans\Camera Configuration Menu (CCM)\P
   Ultimate Combat Redux now writes MadConfigs\Ultimate Combat.lockon (locked=1 / locked=0) on engage and release; CCM
   reads it at most every 100 ms and, while locked, writes the facing flags (UCR's own LOCKED_ON profile). [General]
   bFaceWhileLockedOn (on by default), a switch on the camera page; the change is logged once each way.
+  **Seen working in game 2026-09-29** (the owner: "CCM is reading the lock-on file, and the dodging is working
+  properly").
+- Framing and smoothing, the SmoothCam settings surface (the owner, 2026-09-29: "the offsets for how far over the
+  shoulder the camera is ... XY offsets for where the camera is located in relation to the character. And then you have
+  the interpolation settings. for smoothing"). A Framing page and two INI sections:
+  - [Framing] fSide / fHeight / fDistance (cm, added to the game's own value for each camera state - 0 is the unmodded
+    camera), and bCombatOffsets with fCombatSide / fCombatHeight / fCombatDistance for a weapon drawn;
+  - [Smoothing] bEaseOffsets, iOffsetEasing (22 curves, sine in-out by default), fOffsetSeconds (0.5): a new position,
+    drawing a weapon or the shoulder swap slides the camera instead of cutting (the swap now slides across behind the
+    head); fFollowSpeed, fMaxLagDistance, fRotationSpeedPitch / Yaw and fStateBlendSeconds replace the game's
+    PositionLagSpeed, CameraLagMaxDistance, RotationLagSpeedPitch / Yaw and TransitionDuration while not -1.
+  - All written to the camera manager's CurrentCameraSettingData and re-based on the game's value (Framing.cpp). A
+    runaway guard logs a warning if the game re-writes the setting data every frame. ccm.status gains "framing".
 - ccm.status reports selection, aim (the camera calibration), the activate press, the marker and the crosshair.
 - the previous launch's log is kept as CameraConfigurationMenu.prev.log.
 

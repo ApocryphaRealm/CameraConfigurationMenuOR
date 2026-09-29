@@ -4,6 +4,7 @@
 
 #include "AMF.h"
 #include "Crosshair.h"
+#include "Framing.h"
 #include "Game.h"
 #include "Selection.h"
 #include "Settings.h"
@@ -105,6 +106,69 @@ namespace page
 
 			ImGui::Spacing();
 			if (ImGui::Button(TR("Unstick", "Put the game's camera back now"))) game::Queue(game::Action::kUnstick);
+			SaveIfSettled();
+		}
+
+		// a smoothing slider whose left end (-1) means the game's own value
+		bool GameSlider(const char* a_label, float* a_v, float a_max, const char* a_fmt)
+		{
+			return ImGui::SliderFloat(a_label, a_v, -1.0f, a_max, *a_v < 0.0f ? TR("GameValue", "the game's") : a_fmt);
+		}
+
+		// Framing and smoothing (plan 7.2 / 7.3 - the SmoothCam settings surface, SMOOTHCAM-SETTINGS.md)
+		void DrawFraming()
+		{
+			if (!Begin()) return;
+			auto& s = settings::Get();
+			Hint(TR("FramingIntro", "Where the camera sits, added to the game's own position for each camera state, in centimetres. 0 is the unmodded camera."));
+
+			ImGui::SeparatorText(TR("SectionPosition", "Camera position"));
+			if (ImGui::SliderFloat(TR("Side", "Over the shoulder (side)"), &s.fmSide, -150.0f, 150.0f, "%.0f cm")) Changed();
+			if (ImGui::SliderFloat(TR("Height", "Height"), &s.fmHeight, -100.0f, 150.0f, "%.0f cm")) Changed();
+			if (ImGui::SliderFloat(TR("Distance", "Distance behind"), &s.fmDistance, -300.0f, 600.0f, "%.0f cm")) Changed();
+			if (Switch(TR("CombatOffsets", "A different position with a weapon drawn"), &s.fmCombatOwn)) Changed();
+			ImGui::BeginDisabled(!s.fmCombatOwn);
+			if (ImGui::SliderFloat(TR("CombatSide", "Over the shoulder, weapon drawn"), &s.fmCombatSide, -150.0f, 150.0f, "%.0f cm")) Changed();
+			if (ImGui::SliderFloat(TR("CombatHeight", "Height, weapon drawn"), &s.fmCombatHeight, -100.0f, 150.0f, "%.0f cm")) Changed();
+			if (ImGui::SliderFloat(TR("CombatDistance", "Distance behind, weapon drawn"), &s.fmCombatDistance, -300.0f, 600.0f, "%.0f cm")) Changed();
+			ImGui::EndDisabled();
+			Hint(TR("ShoulderHint", "K moves the camera to the other shoulder; the side value mirrors with it."));
+
+			ImGui::SeparatorText(TR("SectionSlide", "Moving to a new position"));
+			if (Switch(TR("EaseOffsets", "Slide instead of cutting"), &s.smEaseOffsets)) Changed();
+			ImGui::BeginDisabled(!s.smEaseOffsets);
+			const char* curves[framing::kEasingCount] = {
+				TR("EaseLinear", "Linear"),
+				TR("EaseQuadIn", "Quadratic in"), TR("EaseQuadOut", "Quadratic out"), TR("EaseQuadInOut", "Quadratic in-out"),
+				TR("EaseCubicIn", "Cubic in"), TR("EaseCubicOut", "Cubic out"), TR("EaseCubicInOut", "Cubic in-out"),
+				TR("EaseQuartIn", "Quartic in"), TR("EaseQuartOut", "Quartic out"), TR("EaseQuartInOut", "Quartic in-out"),
+				TR("EaseQuintIn", "Quintic in"), TR("EaseQuintOut", "Quintic out"), TR("EaseQuintInOut", "Quintic in-out"),
+				TR("EaseSineIn", "Sine in"), TR("EaseSineOut", "Sine out"), TR("EaseSineInOut", "Sine in-out"),
+				TR("EaseCircIn", "Circular in"), TR("EaseCircOut", "Circular out"), TR("EaseCircInOut", "Circular in-out"),
+				TR("EaseExpoIn", "Exponential in"), TR("EaseExpoOut", "Exponential out"), TR("EaseExpoInOut", "Exponential in-out"),
+			};
+			ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.6f);
+			if (ImGui::Combo(TR("OffsetEasing", "Curve"), &s.smOffsetEasing, curves, framing::kEasingCount)) Changed();
+			if (ImGui::SliderFloat(TR("OffsetSeconds", "Slide time (seconds)"), &s.smOffsetSeconds, 0.0f, 5.0f, "%.2f")) Changed();
+			ImGui::EndDisabled();
+
+			ImGui::SeparatorText(TR("SectionSmoothing", "Smoothing"));
+			Hint(TR("SmoothingHint", "Slide to the far left for the game's own value. Higher follows more tightly; 0 turns that smoothing off."));
+			if (GameSlider(TR("FollowSpeed", "Follow movement"), &s.smFollowSpeed, 30.0f, "%.1f")) Changed();
+			if (GameSlider(TR("MaxLagDistance", "Furthest it trails behind (0 = no limit)"), &s.smMaxLagDistance, 500.0f, "%.0f cm")) Changed();
+			if (GameSlider(TR("RotationPitch", "Follow looking up and down"), &s.smRotationPitch, 30.0f, "%.1f")) Changed();
+			if (GameSlider(TR("RotationYaw", "Follow turning left and right"), &s.smRotationYaw, 30.0f, "%.1f")) Changed();
+			if (GameSlider(TR("StateBlend", "Blend between camera states (seconds)"), &s.smStateBlendSeconds, 5.0f, "%.2f")) Changed();
+
+			ImGui::Spacing();
+			if (ImGui::Button(TR("FramingReset", "Use the game's position and smoothing"))) {
+				const auto d = settings::Defaults();
+				s.fmSide = d.fmSide; s.fmHeight = d.fmHeight; s.fmDistance = d.fmDistance; s.fmCombatOwn = d.fmCombatOwn;
+				s.fmCombatSide = d.fmCombatSide; s.fmCombatHeight = d.fmCombatHeight; s.fmCombatDistance = d.fmCombatDistance;
+				s.smFollowSpeed = d.smFollowSpeed; s.smMaxLagDistance = d.smMaxLagDistance; s.smRotationPitch = d.smRotationPitch;
+				s.smRotationYaw = d.smRotationYaw; s.smStateBlendSeconds = d.smStateBlendSeconds;
+				Changed();
+			}
 			SaveIfSettled();
 		}
 
@@ -233,9 +297,10 @@ namespace page
 			return;
 		}
 		const bool a = AMF::RegisterPage(kModName, "Camera", &DrawCamera);
+		const bool f = AMF::RegisterPage(kModName, "Framing", &DrawFraming);
 		const bool c = AMF::RegisterPage(kModName, "Selection", &DrawSelection);
 		const bool d = AMF::RegisterPage(kModName, "Crosshair", &DrawCrosshair);
 		const bool b = AMF::RegisterPage(kModName, "Status", &DrawStatus);
-		logger::info("AMF {} (API {}): pages Camera={}, Selection={}, Crosshair={}, Status={}", AMF::Version(), AMF::APIVersion(), a, c, d, b);
+		logger::info("AMF {} (API {}): pages Camera={}, Framing={}, Selection={}, Crosshair={}, Status={}", AMF::Version(), AMF::APIVersion(), a, f, c, d, b);
 	}
 }

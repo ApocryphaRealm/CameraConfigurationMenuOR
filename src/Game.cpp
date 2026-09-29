@@ -318,7 +318,7 @@ namespace game
 				g_wroteSwitches = true;
 			}
 			// offsets per context, shoulder swap and smoothing
-			framing::Apply({ .manager = o.mgr, .pawn = a_pawn, .movement = o.move, .cameraTag = tag, .weaponDrawn = combat, .enabled = s.enabled,
+			framing::Apply({ .manager = o.mgr, .pawn = a_pawn, .movement = o.move, .arm = o.arm, .cameraTag = tag, .weaponDrawn = combat, .enabled = s.enabled,
 				.shoulderLeft = g_shoulderLeft, .dt = dt });
 			// the compass follows the camera while the free camera is on in third person (UCR's CompassBridge does the same)
 			compass::Update(o.ctrl, s.enabled && styleFree && !firstPerson && s.compassFollowsCamera && o.arm && o.move);

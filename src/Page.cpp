@@ -123,7 +123,7 @@ namespace page
 			Hint(TR("FramingIntro", "Where the camera sits in each context, added to the game's own position, in centimetres. 0 is the unmodded camera. Pick a context to edit; \"Now\" shows the one you are in."));
 
 			ImGui::SeparatorText(TR("SectionPosition", "Camera position"));
-			const char* groups[static_cast<int>(framing::Group::kCount)] = { TR("GroupStanding", "Standing"), TR("GroupMoving", "Walking or running"), TR("GroupSprinting", "Sprinting"), TR("GroupSneaking", "Sneaking"), TR("GroupWeaponDrawn", "Weapon drawn"), TR("GroupBowAiming", "Aiming a bow"), TR("GroupSwimming", "Swimming"), TR("GroupHorseback", "On horseback") };
+			const char* groups[static_cast<int>(framing::Group::kCount)] = { TR("GroupStanding", "Standing"), TR("GroupMoving", "Walking or running"), TR("GroupSprinting", "Sprinting"), TR("GroupSneaking", "Sneaking"), TR("GroupWeaponDrawn", "Weapon drawn"), TR("GroupBow", "Bow"), TR("GroupSwimming", "Swimming"), TR("GroupHorseback", "On horseback") };
 			const int now = static_cast<int>(framing::Current());
 			ImGui::Text(TR("GroupNow", "Now: %s"), groups[std::clamp(now, 0, static_cast<int>(framing::Group::kCount) - 1)]);
 			static int s_edit = 0;
@@ -176,7 +176,7 @@ namespace page
 			ImGui::Spacing();
 			if (ImGui::Button(TR("FramingReset", "Use the game's position and smoothing"))) {
 				const auto d = settings::Defaults();
-				s.fmGroups = d.fmGroups;
+				std::ranges::copy(d.fmGroups, s.fmGroups);
 				s.smFollowSpeed = d.smFollowSpeed; s.smMaxLagDistance = d.smMaxLagDistance; s.smRotationPitch = d.smRotationPitch;
 				s.smRotationYaw = d.smRotationYaw; s.smStateBlendSeconds = d.smStateBlendSeconds;
 				Changed();

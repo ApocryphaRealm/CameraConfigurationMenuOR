@@ -11,6 +11,9 @@ namespace settings
 	{
 		using K = Field::Kind;
 #define CCM_ROW(sec, key, kind, member, def, lo, hi, comment) Field{ sec, key, K::kind, offsetof(Values, member), def, lo, hi, comment }
+		// an indexed member must land inside its array (std::array's operator[] once sent every framing row to offset 0-12)
+		static_assert(offsetof(Values, fmGroups[7].distance) ==
+		              offsetof(Values, fmGroups) + 7 * sizeof(Values::FramingGroup) + offsetof(Values::FramingGroup, distance));
 
 		// ONE ROW PER LINE - tools/write-ini.py parses these rows to write the shipped INI.
 		const std::vector<Field> kTable = {
@@ -54,14 +57,14 @@ namespace settings
 			CCM_ROW("Framing.Sneaking", "fSide", kFloat, fmGroups[3].side, 0, -150, 150, ""),
 			CCM_ROW("Framing.Sneaking", "fHeight", kFloat, fmGroups[3].height, 0, -100, 150, ""),
 			CCM_ROW("Framing.Sneaking", "fDistance", kFloat, fmGroups[3].distance, 0, -300, 600, ""),
-			CCM_ROW("Framing.WeaponDrawn", "bOwn", kBool, fmGroups[4].own, 0, 0, 1, "A weapon or fists out, when not sneaking or sprinting. 1 = its own position below; 0 = Standing's."),
+			CCM_ROW("Framing.WeaponDrawn", "bOwn", kBool, fmGroups[4].own, 0, 0, 1, "A weapon other than a bow, or fists, out - when not sneaking or sprinting. 1 = its own position below; 0 = Standing's."),
 			CCM_ROW("Framing.WeaponDrawn", "fSide", kFloat, fmGroups[4].side, 0, -150, 150, ""),
 			CCM_ROW("Framing.WeaponDrawn", "fHeight", kFloat, fmGroups[4].height, 0, -100, 150, ""),
 			CCM_ROW("Framing.WeaponDrawn", "fDistance", kFloat, fmGroups[4].distance, 0, -300, 600, ""),
-			CCM_ROW("Framing.BowAiming", "bOwn", kBool, fmGroups[5].own, 0, 0, 1, "Aiming a bow (the game's own aim camera) - above every other context. 1 = its own position below; 0 = Standing's."),
-			CCM_ROW("Framing.BowAiming", "fSide", kFloat, fmGroups[5].side, 0, -150, 150, ""),
-			CCM_ROW("Framing.BowAiming", "fHeight", kFloat, fmGroups[5].height, 0, -100, 150, ""),
-			CCM_ROW("Framing.BowAiming", "fDistance", kFloat, fmGroups[5].distance, 0, -300, 600, ""),
+			CCM_ROW("Framing.Bow", "bOwn", kBool, fmGroups[5].own, 0, 0, 1, "A bow out (drawn or not) - above sneaking, sprinting and moving. 1 = its own position below; 0 = Standing's."),
+			CCM_ROW("Framing.Bow", "fSide", kFloat, fmGroups[5].side, 0, -150, 150, ""),
+			CCM_ROW("Framing.Bow", "fHeight", kFloat, fmGroups[5].height, 0, -100, 150, ""),
+			CCM_ROW("Framing.Bow", "fDistance", kFloat, fmGroups[5].distance, 0, -300, 600, ""),
 			CCM_ROW("Framing.Swimming", "bOwn", kBool, fmGroups[6].own, 0, 0, 1, "Swimming. 1 = its own position below; 0 = Standing's."),
 			CCM_ROW("Framing.Swimming", "fSide", kFloat, fmGroups[6].side, 0, -150, 150, ""),
 			CCM_ROW("Framing.Swimming", "fHeight", kFloat, fmGroups[6].height, 0, -100, 150, ""),
@@ -98,6 +101,35 @@ namespace settings
 
 		Values     g_values;
 		std::mutex g_saveLock;
+		bool       g_tableBroken = false;   // two rows share memory: never load or save (the INI is left as it is)
+
+		std::size_t SizeOf(const Field& a_f) { return a_f.kind == K::kBool ? sizeof(bool) : 4; }
+
+		// Every row must own its bytes inside Values, and no two rows may share any: a row that points at the wrong
+		// member reads and writes that member (2026-09-29 - the framing rows landed on enabled / cameraStyle).
+		bool TableSound()
+		{
+			static const bool sound = [] {
+				bool ok = true;
+				for (std::size_t i = 0; i < kTable.size(); ++i) {
+					const auto& a = kTable[i];
+					if (a.offset + SizeOf(a) > sizeof(Values)) {
+						logger::critical("settings: [{}] {} points outside the settings block - a build defect", a.section, a.key);
+						ok = false;
+					}
+					for (std::size_t j = i + 1; j < kTable.size(); ++j) {
+						const auto& b = kTable[j];
+						if (a.offset < b.offset + SizeOf(b) && b.offset < a.offset + SizeOf(a)) {
+							logger::critical("settings: [{}] {} and [{}] {} share memory (offset {} / {}) - a build defect", a.section, a.key, b.section, b.key, a.offset, b.offset);
+							ok = false;
+						}
+					}
+				}
+				if (!ok) logger::critical("settings: the table is unsound - CCM runs on its compiled defaults and will not read or write the INI");
+				return ok;
+			}();
+			return sound;
+		}
 
 		std::string_view Trim(std::string_view a_s)
 		{
@@ -183,6 +215,10 @@ namespace settings
 
 	void Load()
 	{
+		if (!TableSound()) {
+			g_tableBroken = true;
+			return;
+		}
 		// Rule 16, checked where it can be: the member initialisers and the table must agree.
 		const Values d{};
 		for (const auto& f : kTable) {
@@ -232,6 +268,7 @@ namespace settings
 
 	bool Save()
 	{
+		if (g_tableBroken || !TableSound()) return false;   // never write through a table that points at the wrong members
 		std::scoped_lock l(g_saveLock);
 		const auto path = IniPath();
 		std::vector<std::string> lines;
@@ -320,6 +357,10 @@ namespace settings
 
 	bool SetByName(const std::string& a_name, const json& a_value, std::string& a_why)
 	{
+		if (g_tableBroken || !TableSound()) {
+			a_why = "the settings table is unsound (see the log) - nothing is written";
+			return false;
+		}
 		const auto dot = a_name.rfind('.');   // sections may hold a dot (Framing.Sneaking), keys never do
 		const std::string sec = Lower(dot == std::string::npos ? "" : a_name.substr(0, dot));
 		const std::string key = Lower(dot == std::string::npos ? a_name : a_name.substr(dot + 1));

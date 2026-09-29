@@ -25,11 +25,12 @@ namespace framing
 			template <class F>
 			bool Apply(UE::UObject* a_mgr, F&& a_fn)
 			{
+				if (!a_mgr) return false;
 				const auto& p = Find(a_mgr, path);
 				if (!p.Ok()) {
 					if (!missingLogged) {
 						missingLogged = true;
-						logger::warn("framing: {} not found on the camera manager - that setting does nothing on this game build", path);
+						logger::warn("framing: {} not found on {} - that setting does nothing on this game build", path, ClassName(a_mgr));
 					}
 					return false;
 				}
@@ -46,17 +47,57 @@ namespace framing
 			}
 		};
 
-		Field g_arm{ "CurrentCameraSettingData.DesiredArmLength" };
-		Field g_lag{ "CurrentCameraSettingData.PositionLagSpeed" };
-		Field g_lagMax{ "CurrentCameraSettingData.CameraLagMaxDistance" };
-		Field g_rotPitch{ "CurrentCameraSettingData.RotationLagSpeedPitch" };
-		Field g_rotYaw{ "CurrentCameraSettingData.RotationLagSpeedYaw" };
 		Field g_blend{ "CurrentCameraSettingData.TransitionDuration" };
+		// the smoothing lives on the spring arm (the setting data's lag fields read 0 in game, 2026-09-29)
+		Field g_lag{ "CameraLagSpeed" };
+		Field g_lagMax{ "CameraLagMaxDistance" };
+		Field g_rotPitch{ "CameraRotationLagSpeedPitch" };
+		Field g_rotYaw{ "CameraRotationLagSpeedYaw" };
+
+		// The framing fields: base + CCM's offset. The game writes its own value into the setting data every frame (38 a
+		// second in game) - harmless while that value is its own target. If instead it eases from what is there (CCM's
+		// last write), the base creeps towards CCM's offset frame after frame; then the base is frozen at the last value
+		// trusted until the camera state changes.
+		struct Framed
+		{
+			const char* name;
+			double      base = 0.0, last = 0.0;
+			bool        written = false, frozen = false;
+			std::uint32_t rebases = 0, creep = 0;
+
+			// a_cur: the value in the field now; a_offset: CCM's offset on top; a_stateChanged: the camera tag changed
+			double Target(double a_cur, double a_offset, bool a_stateChanged)
+			{
+				if (a_stateChanged) {
+					frozen = false;
+					creep = 0;
+				}
+				if (!written || std::abs(a_cur - last) > 0.01) {
+					if (written) {
+						++rebases;
+						const double step = a_cur - base;
+						// moved from the old base towards CCM's own write, with no state change: the offset is feeding back
+						if (!a_stateChanged && std::abs(a_offset) > 0.5 && std::abs(step) > 0.05 && (step > 0) == (a_offset > 0)) {
+							if (++creep == 90 && !frozen) {
+								frozen = true;
+								logger::warn("framing: the game's {} crept towards CCM's offset for 90 frames without a state change (base {:.1f}, offset {:.1f}) - the base is held until the state changes", name, base, a_offset);
+							}
+						} else {
+							creep = 0;
+						}
+					}
+					if (!frozen) base = a_cur;
+				}
+				written = true;
+				return base + a_offset;
+			}
+		};
+		Framed g_sockY{ "sideways offset" }, g_sockZ{ "height" }, g_armLen{ "arm length" };
+		std::string g_lastTag;
 
 		constexpr const char* kSocket = "CurrentCameraSettingData.DesiredSocketOffset";
 		bool                  g_socketWritten = false;
 		std::array<double, 3> g_socketBase{}, g_socketLast{};
-		std::uint32_t         g_socketRebases = 0;
 
 		// the eased offset: side, height, distance, mirror (+1 right shoulder, -1 left - eased too, so a shoulder swap
 		// slides the camera across behind the head)
@@ -64,10 +105,6 @@ namespace framing
 		Offset g_now{ 0, 0, 0, 1 }, g_from{ 0, 0, 0, 1 }, g_to{ 0, 0, 0, 1 };
 		double g_t = 1.0;
 
-		// runaway guard: the game re-writing a field every frame would make CCM add its offset to its own last write
-		std::uint32_t g_rebasesThisSecond = 0;
-		double        g_secondClock = 0.0;
-		bool          g_runawayLogged = false;
 
 		std::mutex  g_lock;
 		json        g_state = json::object();
@@ -78,8 +115,9 @@ namespace framing
 
 		struct Signals
 		{
-			bool   sneaking = false, sprinting = false, swimming = false, aiming = false, horseback = false, weaponDrawn = false;
+			bool   sneaking = false, sprinting = false, swimming = false, aiming = false, horseback = false, weaponDrawn = false, bow = false;
 			double speed = 0.0;   // horizontal, cm/s
+			std::string weaponType;   // the held weapon's WeaponTypeTag ("WeaponType.Bow"), "" with none
 		};
 
 		// what the player is doing, from the signals Ultimate Combat Redux already relies on (Context.lua / Dodge.lua) and
@@ -96,6 +134,13 @@ namespace framing
 			g.sneaking = Has(tag, "Sneak");
 			auto* pawn = a_in.pawn;
 			if (!pawn) return g;
+			// the held weapon's type, as UCR reads it (OneButtonCombat.lua / AttackCancel.lua)
+			if (auto* wpc = GetObject(pawn, Find(pawn, "WeaponsPairingComponent"))) {
+				if (auto* weapon = GetObject(wpc, Find(wpc, "WeaponActor"))) {
+					g.weaponType = GetName(weapon, Find(weapon, "WeaponTypeTag.TagName"));
+				}
+			}
+			g.bow = g.weaponDrawn && Has(g.weaponType, "Bow");
 			if (auto* st = GetObject(pawn, Find(pawn, "OblivionActorStatePairingComponent"))) {
 				g.sneaking = g.sneaking || GetBool(st, Find(st, "bIsSneaking"));
 			}
@@ -127,9 +172,9 @@ namespace framing
 		framing::Group Pick(const Signals& g)
 		{
 			using G = framing::Group;
-			if (g.aiming) return G::kBowAiming;
 			if (g.horseback) return G::kHorseback;
 			if (g.swimming) return G::kSwimming;
+			if (g.bow) return G::kBow;
 			if (g.sneaking) return G::kSneaking;
 			if (g.sprinting) return G::kSprinting;
 			if (g.weaponDrawn) return G::kWeaponDrawn;
@@ -160,7 +205,7 @@ namespace framing
 		case Group::kSprinting: return "Sprinting";
 		case Group::kSneaking: return "Sneaking";
 		case Group::kWeaponDrawn: return "WeaponDrawn";
-		case Group::kBowAiming: return "BowAiming";
+		case Group::kBow: return "Bow";
 		case Group::kSwimming: return "Swimming";
 		case Group::kHorseback: return "Horseback";
 		default: return "Standing";
@@ -221,7 +266,7 @@ namespace framing
 			g_lastLogged = group;
 		}
 		const auto  gi = static_cast<std::size_t>(group);
-		const bool  own = gi != 0 && gi < s.fmGroups.size() && s.fmGroups[gi].own;
+		const bool  own = gi != 0 && gi < std::size(s.fmGroups) && s.fmGroups[gi].own;
 		const auto& pos = s.fmGroups[own ? gi : 0];
 		Offset want{ 0, 0, 0, 1 };
 		const char* set = "the game's";
@@ -243,54 +288,50 @@ namespace framing
 		for (std::size_t i = 0; i < 4; ++i) g_now[i] = g_from[i] + (g_to[i] - g_from[i]) * k;
 
 		// ---- the socket offset: base + side / height, the whole Y mirrored ----
+		const bool stateChanged = a_in.cameraTag != g_lastTag;
+		g_lastTag = a_in.cameraTag;
 		std::array<double, 3> sockNow{};
 		const auto& p = Find(a_mgr, kSocket);
 		if (p.Ok()) {
 			sockNow = GetVec(a_mgr, p);
-			if (!g_socketWritten || !Near(sockNow, g_socketLast)) {
-				if (g_socketWritten) {
-					++g_socketRebases;
-					++g_rebasesThisSecond;
-				}
-				g_socketBase = sockNow;
-			}
-			std::array<double, 3> target = g_socketBase;
-			target[1] = (g_socketBase[1] + g_now[0]) * g_now[3];
-			target[2] = g_socketBase[2] + g_now[1];
+			// the whole Y mirrored: (base + side) * mirror = base + (base + side) * mirror - base
+			const double yOffset = (g_sockY.base + g_now[0]) * g_now[3] - g_sockY.base;
+			std::array<double, 3> target = sockNow;
+			target[1] = g_sockY.Target(sockNow[1], yOffset, stateChanged);
+			target[2] = g_sockZ.Target(sockNow[2], g_now[1], stateChanged);
+			g_sockY.last = target[1];
+			g_sockZ.last = target[2];
 			if (!Near(target, sockNow)) SetVec(a_mgr, p, target);
+			g_socketBase = { sockNow[0], g_sockY.base, g_sockZ.base };
 			g_socketLast = target;
 			g_socketWritten = true;
 		}
 
-		// ---- distance and smoothing ----
-		const std::uint32_t armBefore = g_arm.rebases;
-		g_arm.Apply(a_mgr, [&](double b) { return std::max(20.0, b + g_now[2]); });
-		g_rebasesThisSecond += g_arm.rebases - armBefore;
-		g_lag.Apply(a_mgr, [&](double b) { return a_enabled ? OrGame(s.smFollowSpeed, b) : b; });
-		g_lagMax.Apply(a_mgr, [&](double b) { return a_enabled ? OrGame(s.smMaxLagDistance, b) : b; });
-		g_rotPitch.Apply(a_mgr, [&](double b) { return a_enabled ? OrGame(s.smRotationPitch, b) : b; });
-		g_rotYaw.Apply(a_mgr, [&](double b) { return a_enabled ? OrGame(s.smRotationYaw, b) : b; });
-		g_blend.Apply(a_mgr, [&](double b) { return a_enabled ? OrGame(s.smStateBlendSeconds, b) : b; });
-
-		// ---- runaway guard: re-bases every frame mean the game rewrites the field continuously ----
-		g_secondClock += a_dt;
-		if (g_secondClock >= 1.0) {
-			if (g_rebasesThisSecond > 10 && !g_runawayLogged) {
-				g_runawayLogged = true;
-				logger::warn("framing: the game re-wrote the camera offset {} times in a second - it may be easing the setting data itself, so CCM's offsets could stack. Report this with the log.", g_rebasesThisSecond);
-			}
-			g_rebasesThisSecond = 0;
-			g_secondClock = 0.0;
+		// ---- distance ----
+		const auto& pa = Find(a_mgr, "CurrentCameraSettingData.DesiredArmLength");
+		if (pa.Ok()) {
+			const double cur = GetFloat(a_mgr, pa);
+			const double target = std::max(20.0, g_armLen.Target(cur, g_now[2], stateChanged));
+			g_armLen.last = target;
+			if (std::abs(target - cur) > 0.001) SetFloat(a_mgr, pa, static_cast<float>(target));
 		}
+
+		// ---- smoothing: absolute values on the arm (no offset, so nothing can stack) ----
+		g_lag.Apply(a_in.arm, [&](double b) { return a_enabled ? OrGame(s.smFollowSpeed, b) : b; });
+		g_lagMax.Apply(a_in.arm, [&](double b) { return a_enabled ? OrGame(s.smMaxLagDistance, b) : b; });
+		g_rotPitch.Apply(a_in.arm, [&](double b) { return a_enabled ? OrGame(s.smRotationPitch, b) : b; });
+		g_rotYaw.Apply(a_in.arm, [&](double b) { return a_enabled ? OrGame(s.smRotationYaw, b) : b; });
+		g_blend.Apply(a_mgr, [&](double b) { return a_enabled ? OrGame(s.smStateBlendSeconds, b) : b; });
 
 		std::scoped_lock l(g_lock);
 		g_state = json{
 			{ "context", GroupKey(group) }, { "offsets_from", set },
-			{ "signals", { { "sneaking", sig.sneaking }, { "sprinting", sig.sprinting }, { "swimming", sig.swimming }, { "bow_aiming", sig.aiming },
+			{ "signals", { { "sneaking", sig.sneaking }, { "sprinting", sig.sprinting }, { "swimming", sig.swimming }, { "bow_aiming", sig.aiming }, { "weapon_type", sig.weaponType },
 				{ "horseback", sig.horseback }, { "weapon_drawn", sig.weaponDrawn }, { "speed", sig.speed }, { "camera_tag", a_in.cameraTag } } },
 			{ "eased", { { "side", g_now[0] }, { "height", g_now[1] }, { "distance", g_now[2] }, { "mirror", g_now[3] }, { "progress", g_t } } },
-			{ "socket_base", g_socketBase }, { "socket_now", g_socketLast }, { "socket_rebases", g_socketRebases },
-			{ "arm_base", g_arm.base }, { "arm_now", g_arm.last }, { "arm_rebases", g_arm.rebases },
+			{ "socket_base", g_socketBase }, { "socket_now", g_socketLast }, { "socket_rebases", g_sockY.rebases + g_sockZ.rebases },
+			{ "arm_base", g_armLen.base }, { "arm_now", g_armLen.last }, { "arm_rebases", g_armLen.rebases },
+			{ "held_bases", { { "side", g_sockY.frozen }, { "height", g_sockZ.frozen }, { "distance", g_armLen.frozen } } },
 			{ "follow_speed", { { "game", g_lag.base }, { "now", g_lag.last } } },
 			{ "max_lag_distance", { { "game", g_lagMax.base }, { "now", g_lagMax.last } } },
 			{ "rotation_pitch", { { "game", g_rotPitch.base }, { "now", g_rotPitch.last } } },

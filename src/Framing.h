@@ -14,10 +14,11 @@
 // 0 / -1 is the unmodded camera:
 //   * DesiredSocketOffset.Y += side, .Z += height (the whole Y mirrored by the shoulder swap), DesiredArmLength +=
 //     distance - taken from the CONTEXT the player is in (standing, moving, sprinting, sneaking, weapon drawn, bow
-//     aiming, swimming, horseback; a context without its own position uses Standing's) and eased towards a new value
+//     out, swimming, horseback; a context without its own position uses Standing's) and eased towards a new value
 //     over fOffsetSeconds on one of 22 easing curves, so a context change or the shoulder swap slides the camera;
-//   * PositionLagSpeed, CameraLagMaxDistance, RotationLagSpeedPitch / Yaw and the state TransitionDuration are
-//     replaced while their setting is not -1.
+//   * the spring arm's CameraLagSpeed, CameraLagMaxDistance and CameraRotationLagSpeedPitch / Yaw, and the setting
+//     data's TransitionDuration, are replaced while their setting is not -1 (the setting data's own lag fields read 0:
+//     the game does not drive the arm's lag from them).
 // ============================================================================================================
 
 namespace framing
@@ -30,8 +31,8 @@ namespace framing
 		kMoving,        // walking or running (horizontal speed above ~20 cm/s)
 		kSprinting,     // the movement component's IsSprinting, or the camera state tag State.Camera.Sprinting
 		kSneaking,      // OblivionActorStatePairingComponent.bIsSneaking (UCR's signal)
-		kWeaponDrawn,   // bInCombatStance
-		kBowAiming,     // the camera state tag State.Camera.*Aiming (the game's own bow-aim camera)
+		kWeaponDrawn,   // bInCombatStance, any weapon but a bow
+		kBow,           // bInCombatStance with a bow: WeaponsPairingComponent.WeaponActor.WeaponTypeTag "WeaponType.Bow" (as UCR reads it)
 		kSwimming,      // the movement component's IsSwimming
 		kHorseback,     // a camera state tag naming a horse or a mount (NOT YET SEEN in game - to be confirmed)
 		kCount
@@ -43,6 +44,7 @@ namespace framing
 		UE::UObject* manager = nullptr;
 		UE::UObject* pawn = nullptr;
 		UE::UObject* movement = nullptr;   // the pawn's CharacterMovement
+		UE::UObject* arm = nullptr;        // the third-person spring arm (the smoothing values live there)
 		std::string  cameraTag;            // the manager's CameraTags.TagName this tick
 		bool         weaponDrawn = false;
 		bool         enabled = false;      // false eases everything back to the game's values

@@ -55,6 +55,27 @@ name Camera Configuration Menu. Plan: 4. plans\Camera Configuration Menu (CCM)\P
   matches a camera tag naming a horse or mount - not yet seen in game. The page picks the context to edit and shows the
   one you are in; ccm.status "framing" reports the context and every signal.
 - tools/gen.py fails when it cannot read a CCM_ROW line (its pattern had silently dropped every dotted-section row).
+
+### Fixed (round 3, from the primary agent's in-game report of the per-context build)
+- The settings table pointed every [Framing.<Context>] row at the wrong memory: offsetof(Values, fmGroups[i].x)
+  through std::array::operator[] resolved to offsets 0-12 under MSVC, so the rows read and wrote bEnabled,
+  iCameraStyle, fBlockTurnSeconds and fSpellTurnSeconds (the INI showed 0.00 / 0.20 / 1.40 and bOwn=1 in every
+  context; the next load would have set the camera style to the game's). fmGroups is a C array now, a static_assert
+  checks the indexed offset, and the table refuses to load, save or take ccm.drive writes if any two rows share memory.
+  The install strips the damaged [Framing.*] sections from the player's INI.
+- The "re-wrote the camera offset N times in a second" warning measured the game resetting its own value each frame,
+  which is harmless (the report's numbers matched base + offset exactly). Replaced by a real stacking test: the base
+  creeping towards CCM's own offset for 90 frames without a camera state change holds the base until the state changes
+  (logged; ccm.status framing.held_bases).
+- The smoothing sliders write the spring arm (CameraLagSpeed, CameraLagMaxDistance, CameraRotationLagSpeedPitch / Yaw):
+  the setting data's own lag fields read 0 in game.
+
+### Changed
+- The bow context is "a bow out" (the owner: "when holding a weapon that is a bow, just to separate it from other melee
+  weapons. Not necessarily when it's being drawn"): weapon drawn and the held weapon's WeaponTypeTag names a bow (read
+  as Ultimate Combat Redux reads it). [Framing.Bow] replaces [Framing.BowAiming]; the order is horseback, swimming, bow,
+  sneaking, sprinting, weapon drawn, moving, standing. In game the other contexts were detected correctly (sneaking via
+  State.Camera.DrawingWeapon.Sneaking / bIsSneaking, sprinting, weapon drawn).
 - ccm.status reports selection, aim (the camera calibration), the activate press, the marker and the crosshair.
 - the previous launch's log is kept as CameraConfigurationMenu.prev.log.
 

@@ -172,6 +172,8 @@ namespace page
 			if (GameSlider(TR("RotationPitch", "Follow looking up and down"), &s.smRotationPitch, 30.0f, "%.1f")) Changed();
 			if (GameSlider(TR("RotationYaw", "Follow turning left and right"), &s.smRotationYaw, 30.0f, "%.1f")) Changed();
 			if (GameSlider(TR("StateBlend", "Blend between camera states (seconds)"), &s.smStateBlendSeconds, 5.0f, "%.2f")) Changed();
+			if (Switch(TR("SprintShake", "Screen shake while sprinting"), &s.smSprintShake)) Changed();
+			Hint(TR("SprintShakeHint", "Off keeps the camera steady while you sprint."));
 
 			ImGui::Spacing();
 			if (ImGui::Button(TR("FramingReset", "Use the game's position and smoothing"))) {

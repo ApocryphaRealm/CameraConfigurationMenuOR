@@ -2,6 +2,7 @@
 
 #include "Compass.h"
 #include "Framing.h"
+#include "Shake.h"
 #include "PEHook.h"
 #include "Reflect.h"
 #include "Settings.h"
@@ -317,6 +318,7 @@ namespace game
 				}
 				g_wroteSwitches = true;
 			}
+			shake::Update(s.enabled && !s.smSprintShake);   // "Screen shake while sprinting" off = the sprint shakes silenced
 			// offsets per context, shoulder swap and smoothing
 			framing::Apply({ .manager = o.mgr, .pawn = a_pawn, .movement = o.move, .arm = o.arm, .cameraTag = tag, .weaponDrawn = combat, .enabled = s.enabled,
 				.shoulderLeft = g_shoulderLeft, .dt = dt });

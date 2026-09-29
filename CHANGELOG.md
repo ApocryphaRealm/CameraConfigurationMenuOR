@@ -70,6 +70,14 @@ name Camera Configuration Menu. Plan: 4. plans\Camera Configuration Menu (CCM)\P
 - The smoothing sliders write the spring arm (CameraLagSpeed, CameraLagMaxDistance, CameraRotationLagSpeedPitch / Yaw):
   the setting data's own lag fields read 0 in game.
 
+### Added
+- "Screen shake while sprinting" (the owner's name; [Smoothing] bSprintShake, on by default = the game's shake; off = a
+  steady camera). The owner: "I don't see any setting for camera smoothing so that whenever you are sprinting, the
+  camera is stable and not shaking". The shake is two looping LegacyCameraShake Blueprints the game plays from
+  DefaultAltar.ini's VOblivionRuntimeSettings lists on the sprint tag (BP_SprintCameraShake_C / _FP_C - read from the
+  pak, plan folder SPRINT-SHAKE.md); off zeroes their oscillation amplitudes on the class default object and every live
+  or pooled instance, and on puts the recorded values back. Not yet seen in game.
+
 ### Changed
 - The bow context is "a bow out" (the owner: "when holding a weapon that is a bow, just to separate it from other melee
   weapons. Not necessarily when it's being drawn"): weapon drawn and the held weapon's WeaponTypeTag names a bow (read

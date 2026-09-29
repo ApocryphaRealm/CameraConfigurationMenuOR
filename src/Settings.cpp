@@ -80,6 +80,7 @@ namespace settings
 			CCM_ROW("Smoothing", "fMaxLagDistance", kFloat, smMaxLagDistance, -1, -1, 500, "The furthest the camera may trail behind, in centimetres. 0 = no limit, -1 = the game's."),
 			CCM_ROW("Smoothing", "fRotationSpeedPitch", kFloat, smRotationPitch, -1, -1, 30, "How tightly the camera follows looking up and down: higher is tighter, 0 = no smoothing. -1 = the game's."),
 			CCM_ROW("Smoothing", "fRotationSpeedYaw", kFloat, smRotationYaw, -1, -1, 30, "How tightly the camera follows turning left and right. -1 = the game's."),
+			CCM_ROW("Smoothing", "bSprintShake", kBool, smSprintShake, 1, 0, 1, "Screen shake while sprinting: 1 = the game's shake, 0 = a steady camera."),
 			CCM_ROW("Smoothing", "fStateBlendSeconds", kFloat, smStateBlendSeconds, -1, -1, 5, "Seconds the game takes to blend between its camera states (walking, sprinting, weapon drawn...). -1 = the game's."),
 			CCM_ROW("Selection", "bEnabled", kBool, selEnabled, 1, 0, 1, "1 = use what you are roughly looking at: anything within reach and angle, closest to the aim first. The crosshair's own target always wins."),
 			CCM_ROW("Selection", "bThirdPerson", kBool, selThirdPerson, 1, 0, 1, "1 = in third person."),

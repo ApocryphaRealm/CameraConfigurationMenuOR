@@ -36,6 +36,18 @@ name Camera Configuration Menu. Plan: 4. plans\Camera Configuration Menu (CCM)\P
 - the crosshair was left alone: the first instance of the holder class had no built tree (a template). Every instance is
   now tried, and the one whose own bound `Crosshair` property is set is used.
 
+### Fixed (round 2 - the owner: "I turned off the Ultimate Combat Redux free camera and tried to use the CCM free camera and it doesn't work")
+- the free camera did nothing: CCM wrote its four flags BEFORE the player's Blueprint ReceiveTick, which re-applies the
+  stance flags (probe P2), so every write was undone the same frame. UCR writes the same flags in a POST hook; pe::Watch
+  now has post handlers and the player's tick is watched after its body.
+- first person was read from the first-person arm's bVisible; it now comes from PlayerCharacter::is3rdPerson (proven in
+  Better Third-Person Selection), held 150 ms before a switch counts.
+
+### Added (round 2)
+- the compass follows the camera (bCompassFollowsCamera, UCR's CompassBridge formula): the native
+  VHUDMainViewModel::GetCompassDirectionValue's function pointer is swapped for a thunk that returns the controller's yaw
+  + 90 (less the cell's north marker indoors) while the free camera is on in third person. ccm.status reports it.
+
 ### Known
 - never run in game with a save loaded (the pause came before that): the free camera, the action facing, the shoulder
   swap and the new Selection / Crosshair all wait for the owner's first round.

@@ -1,5 +1,6 @@
 #include "Game.h"
 
+#include "Compass.h"
 #include "PEHook.h"
 #include "Reflect.h"
 #include "Settings.h"
@@ -259,7 +260,27 @@ namespace game
 				}
 			}
 
-			const bool firstPerson = o.fpArm && GetBool(o.fpArm, Find(o.fpArm, "bVisible"));
+			// first person from the Gamebryo side (PlayerCharacter::is3rdPerson - proven in Better Third-Person Selection), held
+			// 150 ms before a switch counts: it reads false for a single frame now and then in third person. The first-person
+			// arm's bVisible (the old test) is not what the game's own view uses (UCR asks IsVisible / POV).
+			static bool      s_firstPerson = false;
+			static ULONGLONG s_differentSince = 0;
+			if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
+				const bool raw = !pc->is3rdPerson;
+				const ULONGLONG nowMs = GetTickCount64();
+				if (raw != s_firstPerson) {
+					if (!s_differentSince) {
+						s_differentSince = nowMs;
+					} else if (nowMs - s_differentSince >= 150) {
+						s_firstPerson = raw;
+						s_differentSince = 0;
+						logger::debug("view: {}", raw ? "first person" : "third person");
+					}
+				} else {
+					s_differentSince = 0;
+				}
+			}
+			const bool firstPerson = s_firstPerson;
 			const bool combat = GetBool(a_pawn, Find(a_pawn, "bInCombatStance"));
 			bool attacking = false;
 			const char* mode = "vanilla";
@@ -295,6 +316,8 @@ namespace game
 				g_wroteSwitches = true;
 			}
 			ApplyShoulder(o, s.enabled);
+			// the compass follows the camera while the free camera is on in third person (UCR's CompassBridge does the same)
+			compass::Update(o.ctrl, s.enabled && styleFree && !firstPerson && s.compassFollowsCamera && o.arm && o.move);
 
 			// the tick rate over one-second windows, for the Status page
 			++g_rateWindowTicks;
@@ -415,11 +438,14 @@ namespace game
 			g_nextWatch = now + 2000;
 			if (!ue::SelfCheck()) return;
 			Resolve();
+			compass::Install();   // the native compass getter, swapped once it exists
 			bool changed = false;
 			if (!g_watchPlayer && g_playerClass && g_fnTick) {
-				g_watchPlayer = pe::Watch(g_playerClass, &OnPlayerEvent);
+				// AFTER the Blueprint tick: it re-applies the stance flags, so a write made before it is undone the same frame
+				// (round 2 - the free camera did nothing; UCR writes in a post hook on the same event)
+				g_watchPlayer = pe::Watch(g_playerClass, &OnPlayerEvent, true);
 				changed |= g_watchPlayer;
-				if (g_watchPlayer) logger::info("watching the player's class (ReceiveTick) through its ProcessEvent vtable slot");
+				if (g_watchPlayer) logger::info("watching the player's class (ReceiveTick, after its body) through its ProcessEvent vtable slot");
 			}
 			if (!g_watchedController && (g_fnBlockPressed || g_fnAttackPressed)) {
 				if (auto* pc = ue::FirstOf(ue::Class(L"/Script/Engine.PlayerController")); pc && pc->GetClass()) {

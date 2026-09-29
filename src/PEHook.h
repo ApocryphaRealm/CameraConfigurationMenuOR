@@ -14,7 +14,9 @@ namespace pe
 	using Handler = void (*)(UE::UObject* a_obj, UE::UFunction* a_fn, void* a_params);
 
 	// Watches calls on objects whose class is exactly a_class. False (logged) when its vtable cannot be swapped.
-	bool Watch(UE::UClass* a_class, Handler a_handler);
+	// a_post: the handler runs AFTER the function body (the original ProcessEvent), not before - for writes the event's own
+	// body would otherwise undo (CCM's camera flags after the player's Blueprint ReceiveTick, as UCR writes them)
+	bool Watch(UE::UClass* a_class, Handler a_handler, bool a_post = false);
 
 	// The UFunction's name, UTF-8 (cheap enough for a learn-once compare per UFunction pointer).
 	std::string FunctionName(UE::UFunction* a_fn);

@@ -29,6 +29,13 @@ name Camera Configuration Menu. Plan: 4. plans\Camera Configuration Menu (CCM)\P
 - ccm.status reports selection, aim (the camera calibration), the activate press, the marker and the crosshair.
 - the previous launch's log is kept as CameraConfigurationMenu.prev.log.
 
+### Fixed (round 1, 12:22)
+- nothing in CCM ran: Unreal's property-layout self-check ran 2 s into the launch, read KeyIndex as -1 (the class's
+  property chain not linked yet) and latched a failure - so the camera was never read and no class was watched. A
+  property not found is now "not ready" (asked again); only a wrong offset latches.
+- the crosshair was left alone: the first instance of the holder class had no built tree (a template). Every instance is
+  now tried, and the one whose own bound `Crosshair` property is set is used.
+
 ### Known
 - never run in game with a save loaded (the pause came before that): the free camera, the action facing, the shoulder
   swap and the new Selection / Crosshair all wait for the owner's first round.

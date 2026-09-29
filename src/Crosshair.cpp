@@ -90,23 +90,43 @@ namespace crosshair
 			}
 			g_nextFind = now + 2000;   // the HUD is built late and rebuilt on a load: looked for again every 2 s (rule 17)
 			g_controlling = false;
-			auto* holder = g_holder.Get();
-			if (!holder) {
-				holder = ue::FirstOf(ue::Class(kHolderClass));
-				g_holder.Set(holder);
+			if (!ue::SelfCheck()) {
+				return nullptr;   // property offsets not proven yet
 			}
-			if (!holder) {
-				Status("not found yet (the HUD's crosshair holder WBP_ModernHud_CrosshairSneakEye is not built)");
+			// every live instance of the holder class: the first found can be a template with no built tree (round 1, 12:22),
+			// so the live one is the instance whose own "Crosshair" property - the bound image - is set (or, failing that,
+			// whose tree holds a widget of that name)
+			auto* cls = ue::Class(kHolderClass);
+			auto* arr = UE::FUObjectArray::GetSingleton();
+			if (!cls || !arr) {
+				Status("not found yet (the HUD's crosshair holder class is not loaded)");
 				return nullptr;
 			}
-			auto* img = FindNamed(holder, kImageName);
-			if (!img) {
-				Status(std::format("the holder {} has no widget named {} - the crosshair is left alone", ue::NameOf(holder), kImageName));
-				return nullptr;
+			std::vector<UE::UObject*> holders;
+			arr->LockInternalArray();
+			const std::int32_t n = arr->GetObjectArrayNum();
+			for (std::int32_t i = 0; i < n; ++i) {
+				auto* item = arr->IndexToObject(i);
+				auto* o = item ? reinterpret_cast<UE::UObject*>(item->object) : nullptr;
+				if (o && o->GetClass() == cls && o != cls->GetDefaultObject(false)) {
+					holders.push_back(o);
+				}
 			}
-			g_image.Set(img);
-			Status(std::format("found: {} in {}", ue::NameOf(img), ue::NameOf(holder)));
-			return img;
+			arr->UnlockInternalArray();
+			for (auto* holder : holders) {
+				auto* img = ObjProp(holder, kImageName);
+				if (!img || !ue::IsLive(img)) {
+					img = FindNamed(holder, kImageName);
+				}
+				if (img) {
+					g_holder.Set(holder);
+					g_image.Set(img);
+					Status(std::format("found: {} in {} ({} instance(s) of the holder class)", ue::NameOf(img), ue::NameOf(holder), holders.size()));
+					return img;
+				}
+			}
+			Status(std::format("not found yet: {} instance(s) of the holder class, none with a built {} (the HUD may not be shown yet)", holders.size(), kImageName));
+			return nullptr;
 		}
 
 		float Opacity(UE::UObject* a_w)

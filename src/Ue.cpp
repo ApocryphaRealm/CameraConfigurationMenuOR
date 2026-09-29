@@ -64,6 +64,16 @@ namespace ue
 			return false;   // not loaded yet: asked again later (rule 17)
 		}
 		const auto keyIndex = Offset(vm, "KeyIndex");
+		if (keyIndex < 0) {
+			// the class exists but its property chain is not linked yet (early in a launch - CCM round 1, 12:22:24, read -1
+			// here 2 s in and latched a failure, so nothing in CCM ever ran): asked again later, never latched (rule 17)
+			static bool noted = false;
+			if (!noted) {
+				noted = true;
+				logger::debug("ue: VQuickKeysMenuViewModel has no KeyIndex yet - the property layout is checked again later");
+			}
+			return false;
+		}
 		g_state.store(keyIndex == 0xD0 ? 1 : -1);
 		if (g_state.load() > 0) {
 			logger::info("ue: property offsets proven (VQuickKeysMenuViewModel KeyIndex at 0x{:X})", keyIndex);

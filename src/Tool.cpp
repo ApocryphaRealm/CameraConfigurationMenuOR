@@ -2,8 +2,13 @@
 // thread, so they read game::Status() (a copy made on the game thread) and queue actions - never a UObject.
 #include "Tool.h"
 
+#include "Activate.h"
+#include "Aim.h"
+#include "Crosshair.h"
 #include "Game.h"
+#include "Marker.h"
 #include "Page.h"
+#include "Selection.h"
 #include "Settings.h"
 #include "AMF.h"
 #include "TestBenchAPI.h"
@@ -28,7 +33,9 @@ namespace tool
 				{ "shoulder_left", s.shoulderLeft }, { "socket_base", s.socketBase }, { "socket_now", s.socketNow },
 				{ "arm_length", s.armLengthNow }, { "desired_arm_length", s.desiredArmLength }, { "fov", s.fov },
 				{ "events", { { "block", s.blockEvents }, { "attack", s.attackEvents }, { "cast", s.castEvents } } },
-				{ "problem", s.problem }, { "settings", settings::GetAll() } };
+				{ "problem", s.problem }, { "settings", settings::GetAll() },
+				{ "selection", selection::State() }, { "aim", aim::State() }, { "activate", activate::State() }, { "marker", marker::State() },
+				{ "crosshair", crosshair::State() } };
 		}
 
 		void Write(void* a_sink, TestBenchAPI::WriteFn a_write, const json& a_j) { a_write(a_sink, a_j.dump().c_str()); }
@@ -73,7 +80,7 @@ namespace tool
 		g_tb = get ? static_cast<TestBenchAPI::ITestBenchInterface001*>(get(1)) : nullptr;
 		if (!g_tb) return false;
 		g_tb->RegisterTool("ccm.status",
-			R"({"description":"CCM - Camera Configuration Menu: the live state (hook, resolved objects, camera state tag, the four switches read back, facing lock, shoulder, offsets, event counts, settings).","inputSchema":{"type":"object","properties":{}},"readOnly":true})",
+			R"({"description":"CCM - Camera Configuration Menu: the live state (class watches, resolved objects, camera state tag, the four switches read back, facing lock, shoulder, offsets, event counts, settings; selection, aim calibration, activate press, marker, crosshair).","inputSchema":{"type":"object","properties":{}},"readOnly":true})",
 			&StatusTool, nullptr);
 		g_tb->RegisterTool("ccm.drive",
 			R"({"description":"CCM - drive it for testing. op: get | set {key:'Section.Key' or 'Key', value} (same path as the page, saved to the INI) | action {name: shoulderSwap|cycleStyle|toggle|unstick} | page (opens AMF on CCM).","inputSchema":{"type":"object","properties":{"op":{"type":"string"},"key":{"type":"string"},"value":{},"name":{"type":"string"}}},"readOnly":false})",

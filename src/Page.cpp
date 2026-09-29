@@ -3,7 +3,9 @@
 #include <imgui.h>
 
 #include "AMF.h"
+#include "Crosshair.h"
 #include "Game.h"
+#include "Selection.h"
 #include "Settings.h"
 #include "Strings.h"
 
@@ -11,23 +13,24 @@ namespace page
 {
 	namespace
 	{
-		// An on/off switch (rule 32 - never a checkbox). AMF.h has no toggle export yet (queued for AMF); this draws the
-		// same track-and-knob shape in the theme's own colours, and is a normal navigable item for the controller.
+		// An on/off switch (rule 32 - never a checkbox): the framework's own design (ApocryphaMenuFrameworkOR
+		// include/utils/ToggleSwitch.h) - a red/green track and a white knob in fixed colours, because AMF's theme leaves
+		// Button and FrameBg clear (a theme-coloured track showed only its knob). A normal navigable item for the controller.
 		bool Switch(const char* a_label, bool* a_v)
 		{
 			ImGui::PushID(a_label);
 			const float h = ImGui::GetFrameHeight();
-			const float w = h * 1.8f;
+			const float w = h * 2.0f;
+			const float rr = h * 0.5f;
 			const ImVec2 p = ImGui::GetCursorScreenPos();
 			const bool pressed = ImGui::InvisibleButton("##switch", ImVec2(w, h));
 			if (pressed) *a_v = !*a_v;
 			const bool hovered = ImGui::IsItemHovered() || ImGui::IsItemFocused();
 			auto* dl = ImGui::GetWindowDrawList();
-			const ImU32 track = ImGui::GetColorU32(*a_v ? (hovered ? ImGuiCol_ButtonHovered : ImGuiCol_Button) : (hovered ? ImGuiCol_FrameBgHovered : ImGuiCol_FrameBg));
-			dl->AddRectFilled(p, ImVec2(p.x + w, p.y + h), track, h * 0.5f);
-			const float r = h * 0.5f - 2.0f;
-			const float cx = *a_v ? p.x + w - r - 2.0f : p.x + r + 2.0f;
-			dl->AddCircleFilled(ImVec2(cx, p.y + h * 0.5f), r, ImGui::GetColorU32(*a_v ? ImGuiCol_Text : ImGuiCol_TextDisabled));
+			const ImU32 track = *a_v ? (hovered ? IM_COL32(92, 191, 96, 255) : IM_COL32(76, 175, 80, 255))
+			                         : (hovered ? IM_COL32(207, 84, 84, 255) : IM_COL32(191, 68, 68, 255));
+			dl->AddRectFilled(p, ImVec2(p.x + w, p.y + h), track, rr);
+			dl->AddCircleFilled(ImVec2(p.x + rr + (*a_v ? w - h : 0.0f), p.y + rr), rr - 2.0f, IM_COL32(240, 240, 240, 255), 32);
 			ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
 			ImGui::AlignTextToFramePadding();
 			ImGui::TextUnformatted(a_label);
@@ -101,6 +104,76 @@ namespace page
 			SaveIfSettled();
 		}
 
+		const char* SelectionReason(selection::Reason a_reason)
+		{
+			using enum selection::Reason;
+			switch (a_reason) {
+			case kOff: return TR("SelStateOff", "Selection is off.");
+			case kMenu: return TR("SelStateMenu", "Paused while a menu is open.");
+			case kOffThird: return TR("SelStateOffThird", "Off in third person.");
+			case kOffFirst: return TR("SelStateOffFirst", "Off in first person.");
+			case kNoCamera: return TR("SelStateNoCamera", "The camera cannot be read right now.");
+			case kCalibrating: return TR("SelStateCalibrating", "Getting ready - walk a few steps.");
+			default: return TR("SelStateNotReady", "Waiting for the game.");
+			}
+		}
+
+		// Better Third-Person Selection, inside CCM (plan 13.2)
+		void DrawSelection()
+		{
+			if (!Begin()) return;
+			auto& s = settings::Get();
+			Hint(TR("SelIntro", "Use what you are roughly looking at: anything within reach and within the angle below counts, the closest to where you look first. What the crosshair itself points at always wins."));
+			ImGui::Spacing();
+			if (Switch(TR("SelEnabled", "Wider selection"), &s.selEnabled)) Changed();
+			if (Switch(TR("SelThirdPerson", "In third person"), &s.selThirdPerson)) Changed();
+			if (Switch(TR("SelFirstPerson", "In first person"), &s.selFirstPerson)) Changed();
+			if (Switch(TR("SelMarker", "Show what will be used, where it is"), &s.selShowMarker)) Changed();
+			ImGui::SeparatorText(TR("SelArea", "Area"));
+			ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.6f);
+			if (ImGui::SliderFloat(TR("SelRange", "Reach"), &s.selRange, 50.0f, 400.0f, "%.0f")) Changed();
+			Hint(TR("SelRangeHint", "How far from your character, in game units (about 70 units to a metre)."));
+			ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.6f);
+			if (ImGui::SliderFloat(TR("SelAngle", "Angle"), &s.selMaxAngle, 5.0f, 75.0f, "%.0f")) Changed();
+			Hint(TR("SelAngleHint", "How far to either side of where the camera looks, in degrees."));
+			ImGui::Spacing();
+			ImGui::Separator();
+			const auto st = selection::GetStatus();
+			if (!st.active) {
+				Hint(SelectionReason(st.reason));
+			} else if (!st.choice.empty()) {
+				ImGui::TextDisabled(TR("SelSelected", "Selected: %s"), st.choice.c_str());
+			} else {
+				Hint(TR("SelNothing", "Nothing within reach."));
+			}
+			SaveIfSettled();
+		}
+
+		// the contextual crosshair (plan 13.3)
+		void DrawCrosshair()
+		{
+			if (!Begin()) return;
+			auto& s = settings::Get();
+			const char* modes[3] = { TR("XhModeGame", "The game's crosshair"), TR("XhModeContextual", "Contextual"), TR("XhModeHidden", "Always hidden") };
+			ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.6f);
+			if (ImGui::Combo(TR("XhMode", "Crosshair"), &s.xhMode, modes, 3)) Changed();
+			switch (s.xhMode) {
+			case 0: Hint(TR("XhModeGameHint", "The crosshair as the game shows it.")); break;
+			case 1: Hint(TR("XhModeContextualHint", "Hidden until it means something - shown in the moments switched on below.")); break;
+			default: Hint(TR("XhModeHiddenHint", "Never shown while you play.")); break;
+			}
+			ImGui::SeparatorText(TR("XhWhen", "Contextual: shown"));
+			ImGui::BeginDisabled(s.xhMode != 1);
+			if (Switch(TR("XhWhenAiming", "While aiming a bow or casting a spell"), &s.xhWhenAiming)) Changed();
+			if (Switch(TR("XhWhenTarget", "When there is something to use"), &s.xhWhenTarget)) Changed();
+			if (Switch(TR("XhWhenWeapon", "While a weapon is drawn"), &s.xhWhenWeaponDrawn)) Changed();
+			if (Switch(TR("XhFirstPerson", "Always in first person"), &s.xhInFirstPerson)) Changed();
+			ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.6f);
+			if (ImGui::SliderFloat(TR("XhFade", "Fade (seconds)"), &s.xhFadeSeconds, 0.0f, 2.0f, "%.2f")) Changed();
+			ImGui::EndDisabled();
+			SaveIfSettled();
+		}
+
 		const char* YesNo(bool a_b) { return a_b ? TR("Yes", "yes") : TR("No", "no"); }
 
 		void Row(const char* a_label, const std::string& a_value)
@@ -156,7 +229,9 @@ namespace page
 			return;
 		}
 		const bool a = AMF::RegisterPage(kModName, "Camera", &DrawCamera);
+		const bool c = AMF::RegisterPage(kModName, "Selection", &DrawSelection);
+		const bool d = AMF::RegisterPage(kModName, "Crosshair", &DrawCrosshair);
 		const bool b = AMF::RegisterPage(kModName, "Status", &DrawStatus);
-		logger::info("AMF {} (API {}): pages Camera={}, Status={}", AMF::Version(), AMF::APIVersion(), a, b);
+		logger::info("AMF {} (API {}): pages Camera={}, Selection={}, Crosshair={}, Status={}", AMF::Version(), AMF::APIVersion(), a, c, d, b);
 	}
 }

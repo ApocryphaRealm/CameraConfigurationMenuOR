@@ -22,7 +22,7 @@ set_warnings("allextra")
 add_rules("mode.debug", "mode.releasedbg")
 add_rules("plugin.vsxmake.autoupdate")
 
-add_requires("minhook", "nlohmann_json")
+add_requires("nlohmann_json")
 
 -- Dear ImGui 1.90.8 docking, the framework's own build (ApocryphaMenuFrameworkOR/xmake.lua): AMF::UseFrameworkImGui()
 -- checks the version and struct sizes byte for byte, so this must stay the same source and the same defines. Only the
@@ -41,8 +41,8 @@ target("CameraConfigurationMenu")
         description = "CCM - Camera Configuration Menu: a free third-person camera with per-state framing (Oblivion Remastered)"
     })
     add_deps("imgui")
-    add_packages("minhook", "nlohmann_json")
-    add_syslinks("user32")
+    add_packages("nlohmann_json")
+    add_syslinks("user32", "shell32", "ole32")
     on_load(function (target)
         target:add("defines", "CCM_VERSION=\"" .. (target:version() or "0.0.0") .. "\"")
     end)

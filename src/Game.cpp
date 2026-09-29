@@ -1,9 +1,9 @@
 #include "Game.h"
 
+#include "PEHook.h"
 #include "Reflect.h"
 #include "Settings.h"
-
-#include <MinHook.h>
+#include "Ue.h"
 
 namespace game
 {
@@ -12,14 +12,16 @@ namespace game
 		using namespace reflect;
 		using Clock = std::chrono::steady_clock;
 
-		constexpr std::size_t kProcessEventSlot = 0x4D;   // UObject::ProcessEvent (CommonLibOB64 UObject.h)
 		constexpr const wchar_t* kPlayerClassPath = L"/Game/Dev/PlayerBlueprints/BP_OblivionPlayerCharacter.BP_OblivionPlayerCharacter_C";
 		constexpr const wchar_t* kControllerClassPath = L"/Script/Altar.VEnhancedAltarPlayerController";
 		constexpr const wchar_t* kSpellCastClassPath = L"/Script/Altar.VSpellCastSingleAnimInstance";
 
-		using ProcessEvent_t = void (*)(UE::UObject*, UE::UFunction*, void*);
-		std::atomic<ProcessEvent_t> g_original{ nullptr };
-		std::string g_processEventText;
+		// the classes watched through their ProcessEvent vtable slot (pe::Watch - one slot swapped per vtable, never the shared
+		// body, so UE4SS's own ProcessEvent hook is left as it is)
+		bool                     g_watchPlayer = false;
+		UE::UClass*              g_watchedController = nullptr;
+		std::vector<UE::UClass*> g_watchedCasts;
+		ULONGLONG                g_nextWatch = 0, g_nextCastScan = 0;
 
 		// ---- resolved on the game thread, lazily (rule 17: retried until found) ----
 		UE::UClass*    g_playerClass = nullptr;
@@ -362,97 +364,106 @@ namespace game
 			}
 		}
 
-		void HookedProcessEvent(UE::UObject* a_obj, UE::UFunction* a_fn, void* a_params)
+		// the player's class: ReceiveTick is CCM's per-frame camera point (probe P1)
+		void OnPlayerEvent(UE::UObject* a_obj, UE::UFunction* a_fn, void*)
 		{
 			static double s_lastTickHandled = 0.0;
-			if (a_fn && a_obj && UE::IsInGameThread()) {
-				Resolve();
-				if (a_fn == g_fnTick && a_obj->GetClass() == g_playerClass) {
-					// once per frame: an override's Super call can reach ProcessEvent again with the same pair
-					const double now = Seconds();
-					if (now - s_lastTickHandled > 0.002) {
-						s_lastTickHandled = now;
-						OnPlayerTick(a_obj);
-					}
-				} else if (a_fn == g_fnBlockPressed || a_fn == g_fnBlockReleased || a_fn == g_fnAttackPressed || a_fn == g_fnAttackReleased ||
-						   std::ranges::find(g_fnCast, a_fn) != g_fnCast.end()) {
-					if (a_fn) OnAction(a_fn);
+			if (a_fn && a_obj && a_fn == g_fnTick) {
+				// once per frame: an override's Super call can reach ProcessEvent again with the same pair
+				const double now = Seconds();
+				if (now - s_lastTickHandled > 0.002) {
+					s_lastTickHandled = now;
+					OnPlayerTick(a_obj);
 				}
 			}
-			if (auto* orig = g_original.load(std::memory_order_acquire)) {
-				orig(a_obj, a_fn, a_params);
+		}
+
+		// the controller's class: block and attack presses and releases
+		void OnControllerEvent(UE::UObject*, UE::UFunction* a_fn, void*)
+		{
+			if (a_fn && (a_fn == g_fnBlockPressed || a_fn == g_fnBlockReleased || a_fn == g_fnAttackPressed || a_fn == g_fnAttackReleased)) {
+				OnAction(a_fn);
 			}
 		}
 
-		bool InsideGameImage(const void* a_p)
+		// the spell-cast animation classes: the four OnCast*Enter
+		void OnCastEvent(UE::UObject*, UE::UFunction* a_fn, void*)
 		{
-			const auto base = reinterpret_cast<std::uintptr_t>(::GetModuleHandleW(nullptr));
-			const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
-			const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
-			const auto p = reinterpret_cast<std::uintptr_t>(a_p);
-			return p >= base && p < base + nt->OptionalHeader.SizeOfImage;
+			if (a_fn && std::ranges::find(g_fnCast, a_fn) != g_fnCast.end()) {
+				OnAction(a_fn);
+			}
 		}
 
-		bool TryInstall()
+		void PublishWatches()
 		{
-			auto* arr = UE::FUObjectArray::GetSingleton();
-			if (!arr || arr->GetObjectArrayNum() < 1000) return false;
-			// the ProcessEvent body the first objects' vtables share (a majority, and inside the game's image)
-			std::unordered_map<void*, int> votes;
-			arr->LockInternalArray();
-			const std::int32_t n = std::min(arr->GetObjectArrayNum(), 256);
-			for (std::int32_t i = 0; i < n; ++i) {
-				auto* item = arr->IndexToObject(i);
-				if (!item || !item->object) continue;
-				void** vt = *reinterpret_cast<void***>(item->object);
-				if (vt && vt[kProcessEventSlot]) ++votes[vt[kProcessEventSlot]];
+			std::string text = g_watchPlayer ? "player" : "player (waiting)";
+			text += g_watchedController ? ", controller" : ", controller (waiting)";
+			text += std::format(", {} spell-cast class(es)", g_watchedCasts.size());
+			std::scoped_lock l(g_snapLock);
+			g_snap.hookInstalled = g_watchPlayer;
+			g_snap.processEvent = "vtable watches: " + text;
+			if (g_watchPlayer && g_snap.problem.starts_with("waiting")) g_snap.problem.clear();
+		}
+
+		// The watches, made on the game thread and retried until each class exists (rule 17): the player's class and the live
+		// controller's class every 2 s until watched; every live class deriving from VSpellCastSingleAnimInstance every 10 s (a
+		// class appears when the first spell of its kind is cast).
+		void MakeWatches()
+		{
+			const ULONGLONG now = GetTickCount64();
+			if (now < g_nextWatch) return;
+			g_nextWatch = now + 2000;
+			if (!ue::SelfCheck()) return;
+			Resolve();
+			bool changed = false;
+			if (!g_watchPlayer && g_playerClass && g_fnTick) {
+				g_watchPlayer = pe::Watch(g_playerClass, &OnPlayerEvent);
+				changed |= g_watchPlayer;
+				if (g_watchPlayer) logger::info("watching the player's class (ReceiveTick) through its ProcessEvent vtable slot");
 			}
-			arr->UnlockInternalArray();
-			void* target = nullptr;
-			int best = 0;
-			for (const auto& [p, c] : votes) if (c > best) { best = c; target = p; }
-			if (!target || !InsideGameImage(target)) {
-				SetProblem("ProcessEvent: no body inside the game image yet");
-				return false;
+			if (!g_watchedController && (g_fnBlockPressed || g_fnAttackPressed)) {
+				if (auto* pc = ue::FirstOf(ue::Class(L"/Script/Engine.PlayerController")); pc && pc->GetClass()) {
+					if (pe::Watch(pc->GetClass(), &OnControllerEvent)) {
+						g_watchedController = pc->GetClass();
+						changed = true;
+						logger::info("watching the controller's class {} (block and attack)", ue::NameOf(pc->GetClass()));
+					}
+				}
 			}
-			const MH_STATUS init = MH_Initialize();   // this DLL's own MinHook; other plugins have theirs
-			if (init != MH_OK && init != MH_ERROR_ALREADY_INITIALIZED) {
-				SetProblem(std::format("MinHook would not start ({})", static_cast<int>(init)));
-				return true;   // do not retry forever
+			if (now >= g_nextCastScan && std::ranges::any_of(g_fnCast, [](auto* f) { return f != nullptr; })) {
+				g_nextCastScan = now + 10000;
+				static auto* base = ue::Class(L"/Script/Altar.VSpellCastSingleAnimInstance");
+				auto* arr = UE::FUObjectArray::GetSingleton();
+				std::vector<UE::UClass*> found;
+				if (base && arr) {
+					arr->LockInternalArray();
+					const std::int32_t n = arr->GetObjectArrayNum();
+					for (std::int32_t i = 0; i < n; ++i) {
+						auto* item = arr->IndexToObject(i);
+						auto* o = item ? reinterpret_cast<UE::UObject*>(item->object) : nullptr;
+						auto* cls = o ? o->GetClass() : nullptr;
+						if (cls && cls->IsChildOf(base) && o != cls->GetDefaultObject(false) && std::ranges::find(g_watchedCasts, cls) == g_watchedCasts.end() &&
+							std::ranges::find(found, cls) == found.end()) {
+							found.push_back(cls);
+						}
+					}
+					arr->UnlockInternalArray();
+				}
+				for (auto* cls : found) {
+					if (pe::Watch(cls, &OnCastEvent)) {
+						g_watchedCasts.push_back(cls);
+						changed = true;
+						logger::info("watching the spell-cast class {} (the four casts)", ue::NameOf(cls));
+					}
+				}
 			}
-			void* original = nullptr;
-			const MH_STATUS created = MH_CreateHook(target, reinterpret_cast<void*>(&HookedProcessEvent), &original);
-			if (created != MH_OK) {
-				SetProblem(std::format("MinHook refused ProcessEvent at {:p} ({})", target, static_cast<int>(created)));
-				return true;
-			}
-			g_original.store(reinterpret_cast<ProcessEvent_t>(original), std::memory_order_release);   // BEFORE enabling
-			if (MH_EnableHook(target) != MH_OK) {
-				SetProblem(std::format("MinHook could not enable the ProcessEvent hook at {:p}", target));
-				return true;
-			}
-			g_processEventText = std::format("{:p} ({} of {} objects agree)", target, best, n);
-			logger::info("ProcessEvent hooked at {}", g_processEventText);
-			{
-				std::scoped_lock l(g_snapLock);
-				g_snap.hookInstalled = true;
-				g_snap.processEvent = g_processEventText;
-				g_snap.problem.clear();
-			}
-			g_installed = true;
-			return true;
+			if (changed || !g_watchPlayer) PublishWatches();
 		}
 	}
 
-	void Install()
+	void FrameTick()
 	{
-		std::thread([] {
-			for (int i = 0; i < 1200; ++i) {   // ten minutes at most
-				if (TryInstall()) return;
-				std::this_thread::sleep_for(500ms);
-			}
-			SetProblem("the object array never filled - CCM is not running");
-		}).detach();
+		MakeWatches();
 	}
 
 	Snapshot Status()

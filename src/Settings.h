@@ -44,6 +44,23 @@ namespace settings
 		std::int32_t heightOffsetButton = 0;
 		std::int32_t customGroupButton = 0;
 
+		// [Selection] - Better Third-Person Selection 1.0.0, merged (plan 13.2; the owner's defaults, 2026-09-29)
+		bool  selEnabled = true;
+		bool  selThirdPerson = true;
+		bool  selFirstPerson = false;
+		bool  selShowMarker = true;
+		float selRange = 300.0f;      // game units from the character, 50-400
+		float selMaxAngle = 35.0f;    // degrees either side of the camera's aim, 5-75
+		bool  selLogTargets = false;  // a log line per change of the game's pick or this choice (a test aid)
+
+		// [Crosshair] - the contextual crosshair (plan 13.3; "hides the crosshair optionally": the game's by default)
+		std::int32_t xhMode = 0;      // 0 = the game's, 1 = contextual, 2 = always hidden
+		bool  xhWhenAiming = true;    // contextual: shown while a bow is drawn or a spell is being cast
+		bool  xhWhenTarget = true;    //             ... while there is something to activate
+		bool  xhWhenWeaponDrawn = false;
+		bool  xhInFirstPerson = true; //             ... always in first person
+		float xhFadeSeconds = 0.15f;  // how long it takes to fade in or out
+
 		// [Presets]
 		std::int32_t activePreset = 0;   // 0 = none, 1-6 = the user slots
 

@@ -1,7 +1,8 @@
 #pragma once
 
-// The engine side of CCM. Everything that touches a UObject runs on the GAME thread, inside CCM's
-// UObject::ProcessEvent detour:
+// The engine side of CCM. Everything that touches a UObject runs on the GAME thread: the class watches are made from
+// the PeekMessageW frame tick, and events arrive through pe::Watch's per-class ProcessEvent vtable slots (never a hook
+// on the shared ProcessEvent body - that broke UE4SS, logic library 7567):
 //   * BP_OblivionPlayerCharacter_C::ReceiveTick is the per-frame point (M0 probe P1: once per game frame, always on
 //     the game thread);
 //   * the four movement/camera switches are written EVERY tick (P2: the game re-applies bUseControllerDesiredRotation
@@ -43,7 +44,7 @@ namespace game
 		std::string   problem;
 	};
 
-	void Install();         // starts the hook's retry thread
+	void FrameTick();       // every frame from the PeekMessageW tick (game thread): makes the class watches, retried until each exists
 	Snapshot Status();
 
 	// Actions from keys, the page and ccm.drive - queued, applied on the next game tick.

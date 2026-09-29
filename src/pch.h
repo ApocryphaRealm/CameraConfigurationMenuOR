@@ -12,6 +12,7 @@
 #	define WIN32_LEAN_AND_MEAN
 #endif
 #include <Windows.h>
+#include <ShlObj.h>
 
 // wingdi.h defines ERROR as 0, which turns every REX::ERROR log call into a syntax error
 #ifdef ERROR
@@ -22,11 +23,14 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cmath>
+#include <deque>
 #include <cstdint>
 #include <filesystem>
 #include <format>
 #include <functional>
 #include <mutex>
+#include <numbers>
 #include <optional>
 #include <string>
 #include <string_view>

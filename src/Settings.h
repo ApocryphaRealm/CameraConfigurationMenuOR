@@ -32,8 +32,8 @@ namespace settings
 		bool        vanityCamera = true;
 
 		// [Keys] - DirectInput scan codes / XInput masks, 0 = unbound (plan 7.4, .MD\DEFAULT-KEYS.md)
-		std::int32_t shoulderSwapKey = 0x25;   // K - the owner, 2026-09-28: "use k and l"
-		std::int32_t cycleStyleKey = 0x26;     // L
+		std::int32_t shoulderSwapKey = 0x1A;   // [ - K and L went to Minimap Menu (the owner, 2026-09-29: "we haven't even released CCM, so we can change its camera shoulder keys")
+		std::int32_t cycleStyleKey = 0x1B;     // ]
 		std::int32_t toggleKey = 0;            // the four other keys wait on probe P15 (the vanilla keyboard map)
 		std::int32_t nextPresetKey = 0;
 		std::int32_t heightOffsetKey = 0;

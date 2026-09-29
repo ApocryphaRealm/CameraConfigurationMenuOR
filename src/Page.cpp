@@ -102,7 +102,7 @@ namespace page
 			ImGui::EndDisabled();
 
 			ImGui::SeparatorText(TR("SectionKeys", "Keys"));
-			Hint(TR("KeysHint", "K moves the camera to the other shoulder. L switches between the two free camera styles."));
+			Hint(TR("KeysHint", "[ moves the camera to the other shoulder. ] switches between the two free camera styles."));
 
 			ImGui::Spacing();
 			if (ImGui::Button(TR("Unstick", "Put the game's camera back now"))) game::Queue(game::Action::kUnstick);
@@ -145,7 +145,7 @@ namespace page
 				g.side = s.fmGroups[0].side, g.height = s.fmGroups[0].height, g.distance = s.fmGroups[0].distance;
 				Changed();
 			}
-			Hint(TR("ShoulderHint", "K moves the camera to the other shoulder; the side value mirrors with it."));
+			Hint(TR("ShoulderHint", "[ moves the camera to the other shoulder; the side value mirrors with it."));
 
 			ImGui::SeparatorText(TR("SectionSlide", "Moving to a new position"));
 			if (Switch(TR("EaseOffsets", "Slide instead of cutting"), &s.smEaseOffsets)) Changed();

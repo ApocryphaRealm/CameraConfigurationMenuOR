@@ -70,6 +70,11 @@ name Camera Configuration Menu. Plan: 4. plans\Camera Configuration Menu (CCM)\P
 - The smoothing sliders write the spring arm (CameraLagSpeed, CameraLagMaxDistance, CameraRotationLagSpeedPitch / Yaw):
   the setting data's own lag fields read 0 in game.
 
+### Changed (keys)
+- CCM's default keys moved off K and L, which go to Minimap Menu (the owner, 2026-09-29: "we haven't even released CCM,
+  so we can change its camera shoulder keys. Let's use K and L" for the minimap): the shoulder swap is now [ (26) and
+  the camera style ] (27). DEFAULT-KEYS.md updated. The test install moves a player INI still holding the old defaults.
+
 ### Added
 - "Screen shake while sprinting" (the owner's name; [Smoothing] bSprintShake, on by default = the game's shake; off = a
   steady camera). The owner: "I don't see any setting for camera smoothing so that whenever you are sprinting, the

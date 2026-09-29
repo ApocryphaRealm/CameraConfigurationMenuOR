@@ -45,15 +45,17 @@ namespace settings
 		std::int32_t heightOffsetButton = 0;
 		std::int32_t customGroupButton = 0;
 
-		// [Framing] - where the camera sits, in centimetres ADDED to the game's own value for the state (plan 7.2): 0 = the
-		// unmodded camera. Side mirrors with the shoulder swap.
-		float fmSide = 0.0f;       // -150-150, + = further to the right of the character
-		float fmHeight = 0.0f;     // -100-150
-		float fmDistance = 0.0f;   // -300-600, + = further back
-		bool  fmCombatOwn = false; // 1 = the three below while a weapon is drawn
-		float fmCombatSide = 0.0f;
-		float fmCombatHeight = 0.0f;
-		float fmCombatDistance = 0.0f;
+		// [Framing.<Context>] - where the camera sits, in centimetres ADDED to the game's own value for the state (plan
+		// 7.2): 0 = the unmodded camera. One entry per framing::Group; [0] Standing is also used by every context whose
+		// bOwn is off. Side mirrors with the shoulder swap.
+		struct FramingGroup
+		{
+			bool  own = false;       // this context has its own position (Standing ignores it)
+			float side = 0.0f;       // -150-150, + = further to the right of the character
+			float height = 0.0f;     // -100-150
+			float distance = 0.0f;   // -300-600, + = further back
+		};
+		std::array<FramingGroup, 8> fmGroups{};
 
 		// [Smoothing] - plan 7.3. -1 = the game's own value for the state.
 		bool         smEaseOffsets = true;     // a new position slides in instead of cutting

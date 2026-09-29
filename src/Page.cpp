@@ -120,18 +120,31 @@ namespace page
 		{
 			if (!Begin()) return;
 			auto& s = settings::Get();
-			Hint(TR("FramingIntro", "Where the camera sits, added to the game's own position for each camera state, in centimetres. 0 is the unmodded camera."));
+			Hint(TR("FramingIntro", "Where the camera sits in each context, added to the game's own position, in centimetres. 0 is the unmodded camera. Pick a context to edit; \"Now\" shows the one you are in."));
 
 			ImGui::SeparatorText(TR("SectionPosition", "Camera position"));
-			if (ImGui::SliderFloat(TR("Side", "Over the shoulder (side)"), &s.fmSide, -150.0f, 150.0f, "%.0f cm")) Changed();
-			if (ImGui::SliderFloat(TR("Height", "Height"), &s.fmHeight, -100.0f, 150.0f, "%.0f cm")) Changed();
-			if (ImGui::SliderFloat(TR("Distance", "Distance behind"), &s.fmDistance, -300.0f, 600.0f, "%.0f cm")) Changed();
-			if (Switch(TR("CombatOffsets", "A different position with a weapon drawn"), &s.fmCombatOwn)) Changed();
-			ImGui::BeginDisabled(!s.fmCombatOwn);
-			if (ImGui::SliderFloat(TR("CombatSide", "Over the shoulder, weapon drawn"), &s.fmCombatSide, -150.0f, 150.0f, "%.0f cm")) Changed();
-			if (ImGui::SliderFloat(TR("CombatHeight", "Height, weapon drawn"), &s.fmCombatHeight, -100.0f, 150.0f, "%.0f cm")) Changed();
-			if (ImGui::SliderFloat(TR("CombatDistance", "Distance behind, weapon drawn"), &s.fmCombatDistance, -300.0f, 600.0f, "%.0f cm")) Changed();
+			const char* groups[static_cast<int>(framing::Group::kCount)] = { TR("GroupStanding", "Standing"), TR("GroupMoving", "Walking or running"), TR("GroupSprinting", "Sprinting"), TR("GroupSneaking", "Sneaking"), TR("GroupWeaponDrawn", "Weapon drawn"), TR("GroupBowAiming", "Aiming a bow"), TR("GroupSwimming", "Swimming"), TR("GroupHorseback", "On horseback") };
+			const int now = static_cast<int>(framing::Current());
+			ImGui::Text(TR("GroupNow", "Now: %s"), groups[std::clamp(now, 0, static_cast<int>(framing::Group::kCount) - 1)]);
+			static int s_edit = 0;
+			ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.6f);
+			ImGui::Combo(TR("GroupEdit", "Context"), &s_edit, groups, static_cast<int>(framing::Group::kCount));
+			s_edit = std::clamp(s_edit, 0, static_cast<int>(framing::Group::kCount) - 1);
+			auto& g = s.fmGroups[static_cast<std::size_t>(s_edit)];
+			if (s_edit == 0) {
+				Hint(TR("GroupStandingHint", "Standing is also used by every context that has no position of its own."));
+			} else if (Switch(TR("GroupOwn", "Its own position (otherwise Standing's)"), &g.own)) {
+				Changed();
+			}
+			ImGui::BeginDisabled(s_edit != 0 && !g.own);
+			if (ImGui::SliderFloat(TR("Side", "Over the shoulder (side)"), &g.side, -150.0f, 150.0f, "%.0f cm")) Changed();
+			if (ImGui::SliderFloat(TR("Height", "Height"), &g.height, -100.0f, 150.0f, "%.0f cm")) Changed();
+			if (ImGui::SliderFloat(TR("Distance", "Distance behind"), &g.distance, -300.0f, 600.0f, "%.0f cm")) Changed();
 			ImGui::EndDisabled();
+			if (s_edit != 0 && ImGui::Button(TR("GroupCopy", "Copy Standing's position here"))) {
+				g.side = s.fmGroups[0].side, g.height = s.fmGroups[0].height, g.distance = s.fmGroups[0].distance;
+				Changed();
+			}
 			Hint(TR("ShoulderHint", "K moves the camera to the other shoulder; the side value mirrors with it."));
 
 			ImGui::SeparatorText(TR("SectionSlide", "Moving to a new position"));
@@ -163,8 +176,7 @@ namespace page
 			ImGui::Spacing();
 			if (ImGui::Button(TR("FramingReset", "Use the game's position and smoothing"))) {
 				const auto d = settings::Defaults();
-				s.fmSide = d.fmSide; s.fmHeight = d.fmHeight; s.fmDistance = d.fmDistance; s.fmCombatOwn = d.fmCombatOwn;
-				s.fmCombatSide = d.fmCombatSide; s.fmCombatHeight = d.fmCombatHeight; s.fmCombatDistance = d.fmCombatDistance;
+				s.fmGroups = d.fmGroups;
 				s.smFollowSpeed = d.smFollowSpeed; s.smMaxLagDistance = d.smMaxLagDistance; s.smRotationPitch = d.smRotationPitch;
 				s.smRotationYaw = d.smRotationYaw; s.smStateBlendSeconds = d.smStateBlendSeconds;
 				Changed();

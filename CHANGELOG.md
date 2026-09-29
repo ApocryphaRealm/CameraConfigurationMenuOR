@@ -44,6 +44,17 @@ name Camera Configuration Menu. Plan: 4. plans\Camera Configuration Menu (CCM)\P
     PositionLagSpeed, CameraLagMaxDistance, RotationLagSpeedPitch / Yaw and TransitionDuration while not -1.
   - All written to the camera manager's CurrentCameraSettingData and re-based on the game's value (Framing.cpp). A
     runaway guard logs a warning if the game re-writes the setting data every frame. ccm.status gains "framing".
+- Framing per context (the owner, 2026-09-29: "different offsets for different contexts, like if you're sneaking
+  versus if you're standing versus if you're sprinting versus if you're in combat with weapons drawn versus if you're
+  with a bow and arrow specifically"): [Framing.Standing] plus [Framing.Moving / Sprinting / Sneaking / WeaponDrawn /
+  BowAiming / Swimming / Horseback], each with bOwn and fSide / fHeight / fDistance; a context without its own position
+  uses Standing's. Replaces the single weapon-drawn set ([Framing] bCombatOffsets / fCombat*). Priority when several
+  hold: bow aiming, horseback, swimming, sneaking, sprinting, weapon drawn, moving, standing. Signals: the camera tag
+  (State.Camera.*Aiming / Sprinting), OblivionActorStatePairingComponent.bIsSneaking and the paired movement component's
+  IsSprinting / IsSwimming (as Ultimate Combat Redux reads them), CharacterMovement.Velocity for moving. Horseback
+  matches a camera tag naming a horse or mount - not yet seen in game. The page picks the context to edit and shows the
+  one you are in; ccm.status "framing" reports the context and every signal.
+- tools/gen.py fails when it cannot read a CCM_ROW line (its pattern had silently dropped every dotted-section row).
 - ccm.status reports selection, aim (the camera calibration), the activate press, the marker and the crosshair.
 - the previous launch's log is kept as CameraConfigurationMenu.prev.log.
 

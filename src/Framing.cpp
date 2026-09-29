@@ -71,6 +71,71 @@ namespace framing
 
 		std::mutex  g_lock;
 		json        g_state = json::object();
+		std::atomic<std::int32_t> g_current{ 0 };
+		framing::Group g_lastLogged = framing::Group::kCount;
+
+		bool Has(const std::string& a_tag, std::string_view a_part) { return a_tag.find(a_part) != std::string::npos; }
+
+		struct Signals
+		{
+			bool   sneaking = false, sprinting = false, swimming = false, aiming = false, horseback = false, weaponDrawn = false;
+			double speed = 0.0;   // horizontal, cm/s
+		};
+
+		// what the player is doing, from the signals Ultimate Combat Redux already relies on (Context.lua / Dodge.lua) and
+		// the camera manager's own state tag
+		Signals Read(const framing::Inputs& a_in)
+		{
+			Signals g;
+			g.weaponDrawn = a_in.weaponDrawn;
+			const auto& tag = a_in.cameraTag;
+			g.aiming = Has(tag, "Aiming");
+			g.horseback = Has(tag, "Horse") || Has(tag, "Mount") || Has(tag, "Riding");
+			g.sprinting = Has(tag, "Sprint");
+			g.swimming = Has(tag, "Swim");
+			g.sneaking = Has(tag, "Sneak");
+			auto* pawn = a_in.pawn;
+			if (!pawn) return g;
+			if (auto* st = GetObject(pawn, Find(pawn, "OblivionActorStatePairingComponent"))) {
+				g.sneaking = g.sneaking || GetBool(st, Find(st, "bIsSneaking"));
+			}
+			if (auto* mv = GetObject(pawn, Find(pawn, "PairedPawnMovementComponent"))) {
+				static UE::UClass*    s_class = nullptr;
+				static UE::UFunction* s_sprint = nullptr;
+				static UE::UFunction* s_swim = nullptr;
+				auto* cls = mv->GetClass();
+				if (cls && cls != s_class) {
+					s_class = cls;
+					s_sprint = FindFunction(cls, L"IsSprinting");
+					s_swim = FindFunction(cls, L"IsSwimming");
+					logger::info("framing: the paired movement component is {} - IsSprinting {:p}, IsSwimming {:p}", ClassName(mv),
+						static_cast<void*>(s_sprint), static_cast<void*>(s_swim));
+				}
+				g.sprinting = g.sprinting || CallBool(mv, s_sprint).value_or(false);
+				g.swimming = g.swimming || CallBool(mv, s_swim).value_or(false);
+			}
+			if (auto* move = a_in.movement) {
+				const auto& vp = Find(move, "Velocity");
+				if (vp.Ok()) {
+					const auto v = GetVec(move, vp);
+					g.speed = std::hypot(v[0], v[1]);
+				}
+			}
+			return g;
+		}
+
+		framing::Group Pick(const Signals& g)
+		{
+			using G = framing::Group;
+			if (g.aiming) return G::kBowAiming;
+			if (g.horseback) return G::kHorseback;
+			if (g.swimming) return G::kSwimming;
+			if (g.sneaking) return G::kSneaking;
+			if (g.sprinting) return G::kSprinting;
+			if (g.weaponDrawn) return G::kWeaponDrawn;
+			if (g.speed > 20.0) return G::kMoving;
+			return G::kStanding;
+		}
 
 		bool Near(const std::array<double, 3>& a, const std::array<double, 3>& b)
 		{
@@ -87,6 +152,22 @@ namespace framing
 		// the value a smoothing setting asks for: -1 is the game's own
 		double OrGame(float a_setting, double a_base) { return a_setting < 0.0f ? a_base : static_cast<double>(a_setting); }
 	}
+
+	const char* GroupKey(Group a_g)
+	{
+		switch (a_g) {
+		case Group::kMoving: return "Moving";
+		case Group::kSprinting: return "Sprinting";
+		case Group::kSneaking: return "Sneaking";
+		case Group::kWeaponDrawn: return "WeaponDrawn";
+		case Group::kBowAiming: return "BowAiming";
+		case Group::kSwimming: return "Swimming";
+		case Group::kHorseback: return "Horseback";
+		default: return "Standing";
+		}
+	}
+
+	Group Current() { return static_cast<Group>(g_current.load(std::memory_order_relaxed)); }
 
 	double Ease(int a_curve, double t)
 	{
@@ -123,20 +204,30 @@ namespace framing
 		}
 	}
 
-	void Apply(UE::UObject* a_mgr, bool a_enabled, bool a_shoulderLeft, bool a_weaponDrawn, double a_dt)
+	void Apply(const Inputs& a_in)
 	{
+		auto* a_mgr = a_in.manager;
 		if (!a_mgr) return;
-		const auto& s = settings::Get();
+		const bool   a_enabled = a_in.enabled;
+		const double a_dt = a_in.dt;
+		const auto&  s = settings::Get();
 
-		// ---- the offset CCM wants now, eased towards ----
+		// ---- the context, and the position it asks for (Standing's when it has none of its own) ----
+		const Signals sig = Read(a_in);
+		const Group   group = Pick(sig);
+		g_current.store(static_cast<std::int32_t>(group), std::memory_order_relaxed);
+		if (group != g_lastLogged) {
+			logger::debug("framing: context {} -> {}", g_lastLogged == Group::kCount ? "(none)" : GroupKey(g_lastLogged), GroupKey(group));
+			g_lastLogged = group;
+		}
+		const auto  gi = static_cast<std::size_t>(group);
+		const bool  own = gi != 0 && gi < s.fmGroups.size() && s.fmGroups[gi].own;
+		const auto& pos = s.fmGroups[own ? gi : 0];
 		Offset want{ 0, 0, 0, 1 };
 		const char* set = "the game's";
 		if (a_enabled) {
-			const bool combat = a_weaponDrawn && s.fmCombatOwn;
-			want = combat ? Offset{ double(s.fmCombatSide), double(s.fmCombatHeight), double(s.fmCombatDistance), 1 }
-			              : Offset{ double(s.fmSide), double(s.fmHeight), double(s.fmDistance), 1 };
-			if (a_shoulderLeft) want[3] = -1;
-			set = combat ? "weapon drawn" : "exploring";
+			want = Offset{ double(pos.side), double(pos.height), double(pos.distance), a_in.shoulderLeft ? -1.0 : 1.0 };
+			set = own ? GroupKey(group) : "Standing";
 		}
 		if (!SameOffset(want, g_to)) {
 			g_from = g_now;
@@ -194,7 +285,9 @@ namespace framing
 
 		std::scoped_lock l(g_lock);
 		g_state = json{
-			{ "offsets", set },
+			{ "context", GroupKey(group) }, { "offsets_from", set },
+			{ "signals", { { "sneaking", sig.sneaking }, { "sprinting", sig.sprinting }, { "swimming", sig.swimming }, { "bow_aiming", sig.aiming },
+				{ "horseback", sig.horseback }, { "weapon_drawn", sig.weaponDrawn }, { "speed", sig.speed }, { "camera_tag", a_in.cameraTag } } },
 			{ "eased", { { "side", g_now[0] }, { "height", g_now[1] }, { "distance", g_now[2] }, { "mirror", g_now[3] }, { "progress", g_t } } },
 			{ "socket_base", g_socketBase }, { "socket_now", g_socketLast }, { "socket_rebases", g_socketRebases },
 			{ "arm_base", g_arm.base }, { "arm_now", g_arm.last }, { "arm_rebases", g_arm.rebases },

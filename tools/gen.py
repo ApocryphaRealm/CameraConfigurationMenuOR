@@ -18,13 +18,18 @@ PLUGINS = os.path.join(ROOT, "dist", "OblivionRemastered", "Binaries", "Win64", 
 INI = os.path.join(PLUGINS, "CameraConfigurationMenu.ini")
 TRANS = os.path.join(PLUGINS, "ApocryphaMenuFramework", "Translations", "CameraConfigurationMenu_english.txt")
 
-ROW = re.compile(r'CCM_ROW\("(\w+)",\s*"(\w+)",\s*k(Bool|Int|Float),\s*\w+,\s*([-0-9.]+),\s*[-0-9.]+,\s*[-0-9.]+,\s*"((?:[^"\\]|\\.)*)"\)')
+ROW = re.compile(r'CCM_ROW\("([\w.]+)",\s*"(\w+)",\s*k(Bool|Int|Float),\s*[\w.\[\]]+,\s*([-0-9.]+),\s*[-0-9.]+,\s*[-0-9.]+,\s*"((?:[^"\\]|\\.)*)"\)')
 TR = re.compile(r'TR\("(\w+)",\s*"((?:[^"\\]|\\.)*)"\)')
 
 
 def ini_text():
     src = io.open(os.path.join(ROOT, "src", "Settings.cpp"), encoding="utf-8").read()
     rows = ROW.findall(src)
+    # a row the pattern cannot read would silently vanish from the shipped INI (2026-09-29: [Framing.Sneaking]'s dotted
+    # section and fmGroups[3].side dropped every Framing row until the pattern learned them)
+    declared = src.count('CCM_ROW("')
+    if len(rows) != declared:
+        sys.exit(f"gen.py read {len(rows)} of the {declared} CCM_ROW lines in Settings.cpp - fix the ROW pattern")
     if not rows:
         sys.exit("no CCM_ROW rows found in src/Settings.cpp")
     out = ["; CCM - Camera Configuration Menu (Oblivion Remastered). Every setting is also on the CCM page of the",

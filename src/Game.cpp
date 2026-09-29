@@ -227,6 +227,31 @@ namespace game
 			}
 		}
 
+		// Ultimate Combat Redux's lock-on, from the state file it writes beside its settings on engage and release
+		// ("MadConfigs\Ultimate Combat.lockon", locked=1 / locked=0), read at most every 100 ms
+		bool UltimateCombatLockedOn()
+		{
+			static bool      s_locked = false;
+			static ULONGLONG s_nextRead = 0;
+			const ULONGLONG  now = GetTickCount64();
+			if (now < s_nextRead) return s_locked;
+			s_nextRead = now + 100;
+			static const auto path = settings::PluginFolder().parent_path().parent_path() / L"MadConfigs" / L"Ultimate Combat.lockon";
+			bool locked = false;
+			std::FILE* f = nullptr;
+			if (_wfopen_s(&f, path.c_str(), L"rb") == 0 && f) {
+				char buf[32]{};
+				const auto n = std::fread(buf, 1, sizeof(buf) - 1, f);
+				std::fclose(f);
+				locked = n > 0 && std::string_view(buf, n).find("locked=1") != std::string_view::npos;
+			}
+			if (locked != s_locked) {
+				s_locked = locked;
+				logger::info("Ultimate Combat {} - {}", locked ? "locked on" : "lock released", locked ? "the free camera stands down, the body faces the camera" : "the free camera again");
+			}
+			return s_locked;
+		}
+
 		void OnPlayerTick(UE::UObject* a_pawn)
 		{
 			const auto t0 = Clock::now();
@@ -303,11 +328,12 @@ namespace game
 					WriteSwitches(o, { false, true, false, true });   // Player Camera's first-person values
 					mode = "first person";
 				} else {
+					const bool lockedOn = s.faceWhileLockedOn && UltimateCombatLockedOn();
 					if (s.cameraStyle == 1) {
 						attacking = CallBool(a_pawn, g_fnIsAttacking).value_or(false);
-						locked = attacking || g_clock < g_lockUntil || (s.faceWhileHeld && g_held);
+						locked = lockedOn || attacking || g_clock < g_lockUntil || (s.faceWhileHeld && g_held);
 					} else {
-						locked = combat;
+						locked = lockedOn || combat;
 					}
 					// free: the camera orbits and the body turns to where it walks; locked: the body turns to the camera
 					WriteSwitches(o, locked ? std::array<bool, 4>{ true, false, false, true } : std::array<bool, 4>{ true, false, true, false });

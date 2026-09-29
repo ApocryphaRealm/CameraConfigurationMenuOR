@@ -95,6 +95,10 @@ namespace page
 			if (ImGui::SliderFloat(TR("AttackTurn", "After an attack or bow shot (seconds)"), &s.attackTurnSeconds, 0.0f, 3.0f, "%.2f")) Changed();
 			if (Switch(TR("FaceWhileHeld", "Keep facing while block or attack is held"), &s.faceWhileHeld)) Changed();
 			ImGui::EndDisabled();
+			ImGui::BeginDisabled(s.cameraStyle == 0);
+			if (Switch(TR("FaceWhileLockedOn", "Face the camera while Ultimate Combat is locked on"), &s.faceWhileLockedOn)) Changed();
+			Hint(TR("FaceWhileLockedOnHint", "No free camera while a target is locked, so dodges go where you expect."));
+			ImGui::EndDisabled();
 
 			ImGui::SeparatorText(TR("SectionKeys", "Keys"));
 			Hint(TR("KeysHint", "K moves the camera to the other shoulder. L switches between the two free camera styles."));

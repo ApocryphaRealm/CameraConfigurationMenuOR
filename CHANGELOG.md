@@ -26,6 +26,11 @@ name Camera Configuration Menu. Plan: 4. plans\Camera Configuration Menu (CCM)\P
 - the contextual crosshair: [Crosshair] iMode 0 = the game's (default), 1 = contextual (shown while aiming a bow or
   casting, while there is something to use, while a weapon is drawn, always in first person - each a switch), 2 = always
   hidden; the crosshair image's RenderOpacity faded (fFadeSeconds). A Crosshair page.
+- Ultimate Combat's lock-on ends the free camera (the owner, 2026-09-29: "it needs to prevent you from being in free
+  camera mode while locked on to a target as well. Otherwise, the dodge system doesn't really work all that well"):
+  Ultimate Combat Redux now writes MadConfigs\Ultimate Combat.lockon (locked=1 / locked=0) on engage and release; CCM
+  reads it at most every 100 ms and, while locked, writes the facing flags (UCR's own LOCKED_ON profile). [General]
+  bFaceWhileLockedOn (on by default), a switch on the camera page; the change is logged once each way.
 - ccm.status reports selection, aim (the camera calibration), the activate press, the marker and the crosshair.
 - the previous launch's log is kept as CameraConfigurationMenu.prev.log.
 

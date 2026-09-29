@@ -1,0 +1,6 @@
+build/
+.xmake/
+vsxmake*/
+*.user
+# Player Camera working copies are never committed (plan section 9)
+player-camera-source/

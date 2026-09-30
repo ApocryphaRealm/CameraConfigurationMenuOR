@@ -24,6 +24,13 @@ name Camera Configuration Menu. Plan: 4. plans\Camera Configuration Menu (CCM)\P
   The Status page shows which body and socket were found.
 
 ### Round 10 (the owner's report, 2026-09-30)
+- **Fixed: the Aiming a bow position never reached the camera table** (the owner: "The while aiming a bow camera context
+  is only firing when I release the arrow instead of while I'm aiming it").
+  - Cause: round 9 looked DT_CameraSettings up by its path only. The path missed, and the miss was silent: no "camera
+    table:" line in the log, and ccm.status camera_table read "the camera table is not loaded" (the primary session's
+    reading). The aiming rows were never edited, and the scan never retried.
+  - Fix: the table is looked for by path, then among the loaded DataTables by name, at most every 5 s until found. A
+    failed scan retries every 5 s, and every outcome is logged ("camera table: ...").
 - **Fixed: the conversation lock sometimes aimed at the player's own head** (the owner: "the conversation camera does
   definitely track the target properly now, but depending on the distance I am away from them ... it messes the
   character body up" - screenshots 01:30, the player's own arm, bow and quiver cut across the view).

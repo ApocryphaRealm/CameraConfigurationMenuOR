@@ -41,6 +41,33 @@ namespace camrows
 		bool                                      g_on = false;
 		ULONGLONG                                 g_nextLook = 0;
 		std::string                               g_status = "not looked at yet";
+		bool                                      g_scanOk = false;
+		ULONGLONG                                 g_nextFind = 0, g_nextRescan = 0;
+
+		void Say(const std::string& a_status, bool a_warn = false)
+		{
+			if (a_status == g_status) return;
+			g_status = a_status;
+			if (a_warn) logger::warn("camera table: {}", a_status);
+			else logger::info("camera table: {}", a_status);
+		}
+
+		// The table: by its path, else among the loaded DataTables by name (a whole-array scan, at most every 5 s until found).
+		// Round 9 looked by the path only and said nothing when that missed - no "camera table:" line in the owner's first
+		// test (2026-09-30 01:19-01:40), so the aiming rows were never edited.
+		UE::UObject* FindTable()
+		{
+			if (auto* t = UE::StaticFindObject<UE::UObject>(nullptr, nullptr, kTable)) return t;
+			const ULONGLONG now = GetTickCount64();
+			if (now < g_nextFind) return nullptr;
+			g_nextFind = now + 5000;
+			static auto* dtClass = ue::Class(L"/Script/Engine.DataTable");
+			if (!dtClass) return nullptr;
+			for (auto* o : ue::AllOf(dtClass)) {
+				if (ue::NameOf(o) == "DT_CameraSettings") return o;
+			}
+			return nullptr;
+		}
 		int                                       g_rowsTotal = 0;
 
 		std::string Str(const UE::FName& a_n) { return ue::Utf8(a_n.ToString()); }
@@ -88,13 +115,13 @@ namespace camrows
 			auto* cls = a_table->GetClass();
 			const auto rsOff = cls ? ue::Offset(cls, "RowStruct") : -1;
 			if (rsOff < 0) {
-				g_status = "the table has no RowStruct";
+				Say("the table has no RowStruct", true);
 				return false;
 			}
 			auto* base = reinterpret_cast<std::uint8_t*>(a_table);
 			auto* rowStruct = *reinterpret_cast<UE::UStruct* const*>(base + rsOff);
 			if (!rowStruct || !ue::IsLive(rowStruct) || !FindLayout(rowStruct)) {
-				g_status = "the camera row layout is not as expected (FVCameraSettings / FVCameraSettingData)";
+				Say("the camera row layout is not as expected (FVCameraSettings / FVCameraSettingData)", true);
 				return false;
 			}
 			// RowMap directly after RowStruct (UE 5.3 DataTable.h; TestBench's ue.datatable read, proven in game)
@@ -105,7 +132,7 @@ namespace camrows
 			const std::int32_t numBits = sparse.allocationFlags.numBits;
 			const std::uint32_t* bits = sparse.allocationFlags.allocatorInstance.GetAllocation();
 			if (slots < 0 || slots > 10000 || freeSlots < 0 || freeSlots > slots) {
-				g_status = std::format("the table's row map is not plausible ({} slots, {} free)", slots, freeSlots);
+				Say(std::format("the table's row map is not plausible ({} slots, {} free)", slots, freeSlots), true);
 				return false;
 			}
 			std::vector<std::pair<UE::FName, std::uint8_t*>> rows;
@@ -116,8 +143,7 @@ namespace camrows
 			}
 			const int reflected = ReflectedRowCount(a_table);
 			if (reflected != static_cast<int>(rows.size())) {
-				g_status = std::format("the row map read {} rows, the engine names {} - the table is left alone", rows.size(), reflected);
-				logger::warn("camera table: {}", g_status);
+				Say(std::format("the row map read {} rows, the engine names {} - the table is left alone", rows.size(), reflected), true);
 				return false;
 			}
 			g_rowsTotal = static_cast<int>(rows.size());
@@ -180,20 +206,25 @@ namespace camrows
 		const ULONGLONG now = GetTickCount64();
 		if (now < g_nextLook) return;
 		g_nextLook = now + 250;
-		auto* table = UE::StaticFindObject<UE::UObject>(nullptr, nullptr, kTable);
+		auto* table = FindTable();
 		if (!table) {
-			g_status = "the camera table is not loaded";
+			Say("DT_CameraSettings is not loaded (looked for by path and by name)");
 			g_on = false;
 			return;
 		}
-		if (table != g_table) {
+		// a new table, or a scan that failed: (re)scan - a failed one again every 5 s
+		if (table != g_table || (!g_scanOk && now >= g_nextRescan)) {
+			if (table != g_table) logger::info("camera table: found {}", ue::NameOf(table));
 			g_table = table;
 			g_on = false;
-			if (!Scan(table)) {
+			g_nextRescan = now + 5000;
+			g_scanOk = Scan(table);
+			if (!g_scanOk) {
 				g_blocks.clear();
 				return;
 			}
 		}
+		if (!g_scanOk) return;
 		const auto& s = settings::Get();
 		const auto& g = s.fmGroups[static_cast<std::size_t>(framing::Group::kBowAiming)];
 		const bool on = a_enabled && g.own && !g_blocks.empty();

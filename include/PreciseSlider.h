@@ -45,4 +45,19 @@ namespace precise
 		}
 		return true;
 	}
+
+	inline bool SliderInt(const char* a_label, int* a_v, int a_min, int a_max, const char* a_format = "%d")
+	{
+		const int  before = *a_v;
+		const bool changed = ImGui::SliderInt(a_label, a_v, a_min, a_max, a_format);
+		if (!changed) return false;
+		ImGuiContext& g = *GImGui;
+		const ImGuiID id = ImGui::GetItemID();
+		const bool nav = g.ActiveId == id && (g.ActiveIdSource == ImGuiInputSource_Keyboard || g.ActiveIdSource == ImGuiInputSource_Gamepad);
+		const bool typing = g.InputTextState.ID == id && ImGui::TempInputIsActive(id);
+		if (nav && !typing && *a_v != before) {
+			*a_v = std::clamp(before + (*a_v > before ? 1 : -1), a_min, a_max);
+		}
+		return true;
+	}
 }

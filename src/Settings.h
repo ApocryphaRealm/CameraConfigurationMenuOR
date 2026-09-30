@@ -30,6 +30,7 @@ namespace settings
 		bool        standDownInDialogue = true;
 		bool        conversationFirstPerson = false;   // first person while a conversation runs, the previous view after
 		bool        conversationLockOnSpeaker = true;  // the camera aims at the person spoken to, whatever offset CCM adds
+		bool        conversationFirstPersonNoOffset = true;   // first person in a conversation: no Conversation offset added
 		bool        standDownSitting = true;
 		bool        vanityCamera = true;
 

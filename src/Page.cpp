@@ -228,6 +228,10 @@ namespace page
 			ImGui::SeparatorText(TR("SectionConvView", "View"));
 			if (Switch(TR("ConvFirstPerson", "First person in conversations"), &s.conversationFirstPerson)) Changed();
 			Hint(TR("ConvFirstPersonHint", "The view changes to first person when a conversation starts and back to the one you had when it ends."));
+			ImGui::BeginDisabled(!s.conversationFirstPerson);
+			if (Switch(TR("ConvFirstPersonNoOffset", "No offset in first person"), &s.conversationFirstPersonNoOffset)) Changed();
+			Hint(TR("ConvFirstPersonNoOffsetHint", "The camera position above is not added while you are in first person, so you look straight at the person you talk to."));
+			ImGui::EndDisabled();
 			ImGui::BeginDisabled(s.conversationFirstPerson);
 			if (Switch(TR("ConvLock", "Keep the camera on the person I talk to"), &s.conversationLockOnSpeaker)) Changed();
 			Hint(TR("ConvLockHint", "However far the camera is moved over the shoulder, it stays aimed at the person you are talking to (the one you activated)."));

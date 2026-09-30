@@ -325,10 +325,13 @@ namespace game
 			shake::Update(s.enabled && !s.smSprintShake);   // "Screen shake while sprinting" off = the sprint shakes silenced
 			// offsets per context, shoulder swap and smoothing
 			framing::Apply({ .manager = o.mgr, .pawn = a_pawn, .movement = o.move, .arm = o.arm, .cameraTag = tag, .weaponDrawn = combat, .enabled = s.enabled,
-				.shoulderLeft = g_shoulderLeft, .dt = dt });
+				.shoulderLeft = g_shoulderLeft, .dt = dt,
+				// first person in a conversation looks straight at the speaker: no Conversation offset (the owner, 2026-09-29)
+				.noOffset = s.enabled && s.conversationFirstPersonNoOffset && tag.find("Dialogue") != std::string::npos &&
+			                (firstPerson || conversation::FirstPersonNow()) });
 			// the compass follows the camera while the free camera is on in third person (UCR's CompassBridge does the same)
 			compass::Update(o.ctrl, s.enabled && styleFree && !firstPerson && s.compassFollowsCamera && o.arm && o.move);
-			conversation::Tick(o.ctrl, o.mgr, tag);   // first person in conversations, and the aim held on the speaker
+			conversation::Tick(o.ctrl, o.mgr, o.arm, tag);   // first person in conversations, and the aim held on the speaker
 
 			// [General] bVanityCamera = 0: the idle camera that circles the player never starts - the camera manager's
 			// vanity timer is stopped (once a second, not every frame: input restarts it), and a vanity camera already

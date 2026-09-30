@@ -1,6 +1,7 @@
 #include "Conversation.h"
 
 #include "Aim.h"
+#include "Reflect.h"
 #include "Settings.h"
 #include "Ue.h"
 
@@ -8,6 +9,19 @@ namespace conversation
 {
 	namespace
 	{
+		using reflect::Find;
+		using reflect::GetBool;
+		using reflect::GetObject;
+		using reflect::SetBool;
+		using reflect::SetVec;
+
+		std::string Narrow(const std::wstring& a_w)
+		{
+			std::string out;
+			for (const wchar_t c : a_w) out.push_back(c < 0x80 ? static_cast<char>(c) : '?');
+			return out;
+		}
+
 		bool           g_in = false;
 		bool           g_switched = false;
 		std::uint8_t   g_previousPov = 1;          // EVPlayerPOVType: 0 first person, 1 third close, 2 third far
@@ -19,8 +33,36 @@ namespace conversation
 		bool           g_aimed = false;
 		int            g_overridden = 0;           // ticks the game's own aim replaced ours (read back the next tick)
 
+		// the speaker's Unreal body, found once a conversation (its head socket is the aim point, as Ultimate Combat aims)
+		ue::Handle   g_pawn, g_mesh;
+		bool         g_pawnSearched = false;
+		std::string  g_pawnMatch = "not looked for";
+		std::wstring g_socket;                     // the socket in use, empty = none (the Oblivion head position is used)
+		ULONGLONG    g_lastStep = 0;
+
+		// the player's third-person arm, held for the lock the way Ultimate Combat's lock-on freezes it (LockOn.lua
+		// freeze_arm / restore_arm): no inherited rotation, absolute rotation, and put back when the lock ends
+		ue::Handle g_arm;
+		bool       g_armFrozen = false;
+		std::array<bool, 4> g_armSaved{};         // bInheritPitch, bInheritYaw, bInheritRoll, bAbsoluteRotation
+
 		std::mutex  g_lock;
 		std::string g_status = "no conversation yet";
+		std::string g_shownSpeaker, g_shownBody, g_shownSocket;   // copies for State(), which other threads call
+
+		void Publish()
+		{
+			std::scoped_lock l(g_lock);
+			g_shownSpeaker = g_speakerName;
+			g_shownBody = g_pawnMatch;
+			g_shownSocket = Narrow(g_socket);
+		}
+
+		// Ultimate Combat's lock-on rates (LockOn.lua, Kramer7046 - modification allowed with credit): each tick a fifth of
+		// the way to the goal, at most 300 degrees a second of yaw and 180 of pitch; pitch held within 75 degrees
+		constexpr double kStepShare = 0.20;
+		constexpr double kYawRate = 300.0, kPitchRate = 180.0;
+		constexpr double kPitchLimit = 75.0;
 
 		void Status(std::string a_s)
 		{
@@ -53,37 +95,182 @@ namespace conversation
 			return c.Run();
 		}
 
-		// aim the controller from the camera's own place at the speaker's head
-		void Aim(UE::UObject* a_ctrl, UE::UObject* a_mgr)
+		double Normal(double a)
 		{
+			a = std::fmod(a, 360.0);
+			if (a > 180.0) a -= 360.0;
+			if (a < -180.0) a += 360.0;
+			return a;
+		}
+
+		double Shortest(double a_from, double a_to) { return Normal(a_to - a_from); }
+
+		bool SocketExists(UE::UObject* a_mesh, const wchar_t* a_name)
+		{
+			ue::Call c(a_mesh, L"DoesSocketExist");
+			if (!c) return false;
+			c.Set("InSocketName", UE::FName(a_name, UE::EFindName::Add));
+			c.Run();
+			return c.Get<bool>("ReturnValue");
+		}
+
+		// The speaker's pawn: the paired pawn whose reference component carries the speaker's form ID, or - when none does -
+		// the pawn nearest the speaker's own position (within 3 m). Once a conversation: the object array is scanned whole.
+		void FindSpeakerPawn(RE::TESObjectREFR* a_ref)
+		{
+			g_pawnSearched = true;
+			g_pawn = {};
+			g_mesh = {};
+			g_socket.clear();
+			static auto* pawnClass = ue::Class(L"/Script/Altar.VPairedPawn");
+			if (!pawnClass || !a_ref) {
+				g_pawnMatch = pawnClass ? "no speaker" : "the paired pawn class is not loaded";
+				return;
+			}
+			UE::FVector want{};
+			const bool haveWant = aim::ToUnreal(a_ref->data.location, want);
+			UE::UObject* byId = nullptr;
+			UE::UObject* nearest = nullptr;
+			double       best = 300.0;
+			for (auto* p : ue::AllOf(pawnClass)) {
+				if (auto* comp = GetObject(p, Find(p, "TESRefComponent"))) {
+					if (reinterpret_cast<UE::UVTESObjectRefComponent*>(comp)->formIDInstance == a_ref->GetFormID()) {
+						byId = p;
+						break;
+					}
+				}
+				if (haveWant) {
+					static ue::Getter location(L"K2_GetActorLocation");
+					std::array<double, 3> at{};
+					if (location.Get(p, at)) {
+						const double d = std::hypot(at[0] - want.x, at[1] - want.y, at[2] - want.z);
+						if (d < best) {
+							best = d;
+							nearest = p;
+						}
+					}
+				}
+			}
+			auto* pawn = byId ? byId : nearest;
+			g_pawnMatch = byId ? "by its form ID" : nearest ? std::format("the nearest body ({:.0f} cm from the speaker)", best) : "no body found";
+			if (!pawn) return;
+			g_pawn.Set(pawn);
+			auto* mesh = GetObject(pawn, Find(pawn, "MainSkeletalMeshComponent"));
+			if (!mesh) {
+				g_pawnMatch += ", no skeletal mesh";
+				return;
+			}
+			g_mesh.Set(mesh);
+			for (const wchar_t* name : { L"Head_Socket", L"Spine_Socket", L"Root_Socket" }) {
+				if (SocketExists(mesh, name)) {
+					g_socket = name;
+					break;
+				}
+			}
+			g_pawnMatch += g_socket.empty() ? ", no socket" : std::format(", socket {}", Narrow(g_socket));
+			Publish();
+		}
+
+		// where to look: the speaker's head socket (Unreal's world), else the Oblivion head position converted
+		bool AimPoint(std::array<double, 3>& a_out)
+		{
+			auto* mesh = g_socket.empty() ? nullptr : g_mesh.Get();
+			if (mesh) {
+				ue::Call c(mesh, L"GetSocketLocation");
+				if (c) {
+					c.Set("InSocketName", UE::FName(g_socket.c_str(), UE::EFindName::Add));
+					c.Run();
+					a_out = c.Get<std::array<double, 3>>("ReturnValue");
+					if (a_out[0] != 0.0 || a_out[1] != 0.0 || a_out[2] != 0.0) return true;
+				}
+			}
 			auto* ref = g_speaker ? RE::TESForm::LookupByID<RE::TESObjectREFR>(g_speaker) : nullptr;
-			if (!ref || !a_ctrl || !a_mgr) return;
+			if (!ref) return false;
 			RE::NiPoint3 head = ref->data.location;
 			head.z += 115.0f;   // about eye height on a person (Oblivion units)
-			UE::FVector target{};
+			UE::FVector t{};
+			if (!aim::ToUnreal(head, t)) return false;
+			a_out = { t.x, t.y, t.z };
+			return true;
+		}
+
+		void FreezeArm(UE::UObject* a_arm)
+		{
+			if (!a_arm || g_armFrozen) return;
+			g_armSaved = { GetBool(a_arm, Find(a_arm, "bInheritPitch")), GetBool(a_arm, Find(a_arm, "bInheritYaw")), GetBool(a_arm, Find(a_arm, "bInheritRoll")),
+				GetBool(a_arm, Find(a_arm, "bAbsoluteRotation")) };
+			SetBool(a_arm, Find(a_arm, "bInheritPitch"), false);
+			SetBool(a_arm, Find(a_arm, "bInheritYaw"), false);
+			SetBool(a_arm, Find(a_arm, "bInheritRoll"), false);
+			SetBool(a_arm, Find(a_arm, "bAbsoluteRotation"), true);
+			g_arm.Set(a_arm);
+			g_armFrozen = true;
+		}
+
+		void RestoreArm()
+		{
+			if (!g_armFrozen) return;
+			g_armFrozen = false;
+			auto* arm = g_arm.Get();
+			if (!arm) return;
+			SetBool(arm, Find(arm, "bInheritPitch"), g_armSaved[0]);
+			SetBool(arm, Find(arm, "bInheritYaw"), g_armSaved[1]);
+			SetBool(arm, Find(arm, "bInheritRoll"), g_armSaved[2]);
+			SetBool(arm, Find(arm, "bAbsoluteRotation"), g_armSaved[3]);
+		}
+
+		// Ultimate Combat's lock-on, applied to the speaker (the owner, 2026-09-29: "reference how Ultimate Combat locks onto
+		// a target and just apply that to the conversation offset camera"): the look-at rotation from the camera's own
+		// place to the speaker's head socket, stepped toward at its rates, written to the controller's ControlRotation and
+		// to the frozen third-person arm's RelativeRotation - the two writes its tracking tick makes.
+		void Aim(UE::UObject* a_ctrl, UE::UObject* a_mgr, UE::UObject* a_arm)
+		{
+			if (!a_ctrl || !a_mgr || !a_arm) return;
+			std::array<double, 3> target{}, cam{};
 			static ue::Getter camLocation(L"GetCameraLocation");
-			std::array<double, 3> cam{};
-			if (!aim::ToUnreal(head, target) || !camLocation.Get(a_mgr, cam)) return;
-			// the game replaced last tick's aim? (read back before writing again - a write that never holds is reported)
+			if (!AimPoint(target) || !camLocation.Get(a_mgr, cam)) return;
+			const double dx = target[0] - cam[0], dy = target[1] - cam[1], dz = target[2] - cam[2];
+			if (std::hypot(dx, dy, dz) < 1.0) return;
+			const double goalYaw = std::atan2(dy, dx) * 180.0 / std::numbers::pi;
+			const double goalPitch = std::atan2(dz, std::hypot(dx, dy)) * 180.0 / std::numbers::pi;
+
+			// where the view is now: our last write, or on the first tick the camera's own rotation
+			std::array<double, 3> cur{};
 			static ue::Getter controlRotation(L"GetControlRotation");
-			std::array<double, 3> now{};
-			if (g_aimed && controlRotation.Get(a_ctrl, now) && (std::abs(now[0] - g_lastAim[0]) > 1.0 || std::abs(now[1] - g_lastAim[1]) > 1.0)) {
-				++g_overridden;
+			std::array<double, 3> ctrlNow{};
+			const bool haveCtrl = controlRotation.Get(a_ctrl, ctrlNow);
+			if (g_aimed) {
+				if (haveCtrl && (std::abs(Shortest(ctrlNow[0], g_lastAim[0])) > 1.0 || std::abs(Shortest(ctrlNow[1], g_lastAim[1])) > 1.0)) {
+					++g_overridden;
+				}
+				cur = g_lastAim;
+			} else {
+				static ue::Getter camRotation(L"GetCameraRotation");
+				if (!camRotation.Get(a_mgr, cur) && haveCtrl) cur = ctrlNow;
+				FreezeArm(a_arm);
 			}
-			const double dx = target.x - cam[0], dy = target.y - cam[1], dz = target.z - cam[2];
-			const double yaw = std::atan2(dy, dx) * 180.0 / std::numbers::pi;
-			const double pitch = std::atan2(dz, std::hypot(dx, dy)) * 180.0 / std::numbers::pi;
-			const std::array<double, 3> rot{ pitch, yaw, 0.0 };
-			ue::Call set(a_ctrl, L"SetControlRotation");
-			if (!set) return;
-			set.Set("NewRotation", rot);
-			set.Run();
+			const ULONGLONG now = GetTickCount64();
+			const double    dt = std::clamp(g_lastStep ? (now - g_lastStep) / 1000.0 : 1.0 / 60.0, 1.0 / 240.0, 0.05);
+			g_lastStep = now;
+			const double stepPitch = std::clamp(Shortest(cur[0], goalPitch) * kStepShare, -kPitchRate * dt, kPitchRate * dt);
+			const double stepYaw = std::clamp(Shortest(cur[1], goalYaw) * kStepShare, -kYawRate * dt, kYawRate * dt);
+			const std::array<double, 3> rot{ std::clamp(Normal(cur[0] + stepPitch), -kPitchLimit, kPitchLimit), Normal(cur[1] + stepYaw), 0.0 };
+
+			SetVec(a_ctrl, Find(a_ctrl, "ControlRotation"), rot);
+			SetVec(a_arm, Find(a_arm, "RelativeRotation"), rot);
 			g_lastAim = rot;
 			g_aimed = true;
 		}
+
+		void EndLock()
+		{
+			RestoreArm();
+			g_aimed = false;
+			g_lastStep = 0;
+		}
 	}
 
-	void Tick(UE::UObject* a_controller, UE::UObject* a_cameraManager, const std::string& a_cameraTag)
+	void Tick(UE::UObject* a_controller, UE::UObject* a_cameraManager, UE::UObject* a_arm, const std::string& a_cameraTag)
 	{
 		const auto& s = settings::Get();
 		auto*       im = RE::InterfaceManager::GetInstance(false, false);
@@ -108,10 +295,13 @@ namespace conversation
 			g_switched = false;
 			g_aimed = false;
 			g_overridden = 0;
+			g_pawnSearched = false;
+			g_pawnMatch = "not looked for";
 			g_speaker = now - g_lastTalkableAt < 3000 ? g_lastTalkable : 0;
 			auto* ref = g_speaker ? RE::TESForm::LookupByID<RE::TESObjectREFR>(g_speaker) : nullptr;
 			const char* n = ref && ref->data.objectReference ? RE::TESFullName::GetFullName(ref->data.objectReference) : nullptr;
 			g_speakerName = n && *n ? n : (g_speaker ? "(no name)" : "");
+			Publish();
 			if (s.enabled && s.conversationFirstPerson) {
 				g_previousPov = Pov(a_controller);
 				if (g_previousPov != 0 && SwitchPov(a_controller, 0)) {
@@ -122,23 +312,36 @@ namespace conversation
 				g_switched ? "; first person" : ""));
 		} else if (g_in && gameplay && !dialogue) {
 			g_in = false;
+			EndLock();
 			if (g_switched) {
 				SwitchPov(a_controller, g_previousPov);   // the view the player had before the conversation
 				g_switched = false;
 			}
 			Status(g_overridden > 0 ? std::format("the conversation ended (the game's own aim replaced ours {} times)", g_overridden) : "the conversation ended");
 			g_speaker = 0;
+			g_pawn = {};
+			g_mesh = {};
 		}
 
-		if (g_in && s.enabled && s.conversationLockOnSpeaker && g_speaker && !g_switched && Pov(a_controller) != 0) {
-			Aim(a_controller, a_cameraManager);
+		const bool lock = g_in && s.enabled && s.conversationLockOnSpeaker && g_speaker && !g_switched && Pov(a_controller) != 0;
+		if (lock) {
+			if (!g_pawnSearched) {
+				FindSpeakerPawn(RE::TESForm::LookupByID<RE::TESObjectREFR>(g_speaker));
+				Status(std::format("in a conversation with {}; the camera holds on them - body {}", g_speakerName, g_pawnMatch));
+			}
+			Aim(a_controller, a_cameraManager, a_arm);
+		} else if (g_aimed) {
+			EndLock();   // the lock stopped applying mid-conversation (first person, the switch turned off)
 		}
 	}
+
+	bool FirstPersonNow() { return g_in && g_switched; }
 
 	json State()
 	{
 		std::scoped_lock l(g_lock);
-		return { { "status", g_status }, { "in_conversation", g_in }, { "speaker", g_speakerName }, { "first_person_switched", g_switched },
+		return { { "status", g_status }, { "in_conversation", g_in }, { "speaker", g_shownSpeaker }, { "first_person_switched", g_switched },
+			{ "speaker_body", g_shownBody }, { "socket", g_shownSocket }, { "arm_held", g_armFrozen },
 			{ "aim", g_lastAim }, { "game_replaced_aim", g_overridden } };
 	}
 }

@@ -9,6 +9,26 @@ The owner, 2026-09-29: "work on completing the better third person camera projec
 selection into that mod and also add on a contextual crosshair that hides the crosshair optionally" - CCM, keeping the
 name Camera Configuration Menu. Plan: 4. plans\Camera Configuration Menu (CCM)\PLAN.md section 13.
 
+### Changed (later the same day)
+- the conversation camera now holds on the speaker the way Ultimate Combat's lock-on holds a target (the owner: "The
+  conversation camera isn't locking on to the NPC. So why don't you have the agent reference how Ultimate Combat locks
+  onto a target and just apply that to the conversation offset camera?"). Before, it only called SetControlRotation,
+  and the game replaced that every tick. Now it works as UC's LockOn.lua does (Kramer7046, modification allowed with
+  credit):
+  - it finds the speaker's Unreal body (the paired pawn carrying the speaker's form ID, or else the nearest within 3 m)
+    and aims at its Head_Socket;
+  - it turns toward the look-at rotation from the camera's position at UC's rates: a fifth of the way each tick, at most
+    300 degrees/s of yaw and 180 of pitch, with pitch kept within 75 degrees;
+  - it writes that rotation to the controller's ControlRotation and to the third-person arm's RelativeRotation, with the
+    arm frozen (no inherited rotation, absolute rotation). The arm is put back when the conversation ends.
+  The Status page shows which body and socket were found.
+
+### Added (later the same day)
+- `[Framing.Conversation] bFirstPersonNoOffset` (on by default): with first person in conversations turned on, the
+  Conversation offset is not added while the view is first person, so it looks straight at the speaker (the owner: "the
+  conversation camera's first person mode have a toggle to not have an offset because you're in first person mode and
+  you want to look directly at your target"). The switch is on the Conversation page, under First person.
+
 ### Changed
 - the engine hook: the MinHook on the shared UObject::ProcessEvent body (which broke UE4SS's own hook - logic library
   7567) is replaced by per-class ProcessEvent vtable watches (pe::Watch, as Tween Menu and Improved Wheel Menu use):

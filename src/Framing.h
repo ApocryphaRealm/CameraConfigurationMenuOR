@@ -51,6 +51,7 @@ namespace framing
 		bool         enabled = false;      // false eases everything back to the game's values
 		bool         shoulderLeft = false;
 		double       dt = 0.0;
+		bool         noOffset = false;     // the game's own position, no offset (first person in a conversation)
 	};
 
 	// game thread, every camera tick

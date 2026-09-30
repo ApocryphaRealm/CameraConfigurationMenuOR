@@ -74,6 +74,7 @@ namespace settings
 			CCM_ROW("Framing.Horseback", "fHeight", kFloat, fmGroups[7].height, 0, -100, 150, ""),
 			CCM_ROW("Framing.Horseback", "fDistance", kFloat, fmGroups[7].distance, 0, -300, 600, ""),
 			CCM_ROW("Framing.Conversation", "bFirstPerson", kBool, conversationFirstPerson, 0, 0, 1, "1 = first person while a conversation runs, and the view you had back when it ends."),
+			CCM_ROW("Framing.Conversation", "bFirstPersonNoOffset", kBool, conversationFirstPersonNoOffset, 1, 0, 1, "1 = with first person in conversations, the offsets below are not added while the view is first person, so you look straight at the person you talk to."),
 			CCM_ROW("Framing.Conversation", "bLockOnSpeaker", kBool, conversationLockOnSpeaker, 1, 0, 1, "1 = in third person the camera stays aimed at the person you are talking to, whatever offset is added."),
 			CCM_ROW("Framing.Conversation", "bOwn", kBool, fmGroups[8].own, 0, 0, 1, "In a conversation (the game's dialogue camera) - above every other context. 1 = its own position below; 0 = Standing's."),
 			CCM_ROW("Framing.Conversation", "fSide", kFloat, fmGroups[8].side, 0, -150, 150, ""),

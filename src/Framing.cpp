@@ -273,7 +273,9 @@ namespace framing
 		const auto& pos = s.fmGroups[own ? gi : 0];
 		Offset want{ 0, 0, 0, 1 };
 		const char* set = "the game's";
-		if (a_enabled) {
+		if (a_enabled && a_in.noOffset) {
+			set = "none (first person in a conversation)";
+		} else if (a_enabled) {
 			want = Offset{ double(pos.side), double(pos.height), double(pos.distance), a_in.shoulderLeft ? -1.0 : 1.0 };
 			set = own ? GroupKey(group) : "Standing";
 		}

@@ -35,6 +35,8 @@ namespace ue
 	// the first live object whose class is a_base or derives from it (not a class default object) - scans the whole
 	// object array, so the caller caches the answer
 	UE::UObject* FirstOf(UE::UClass* a_base);
+	// every live object of a_base or a class derived from it (never a class default object) - a whole scan, so rare
+	std::vector<UE::UObject*> AllOf(UE::UClass* a_base);
 
 	inline UE::UClass* Class(const wchar_t* a_path)
 	{

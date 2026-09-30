@@ -134,6 +134,27 @@ namespace ue
 		return found;
 	}
 
+	std::vector<UE::UObject*> AllOf(UE::UClass* a_base)
+	{
+		std::vector<UE::UObject*> out;
+		auto* arr = UE::FUObjectArray::GetSingleton();
+		if (!arr || !a_base) {
+			return out;
+		}
+		arr->LockInternalArray();
+		const std::int32_t n = arr->GetObjectArrayNum();
+		for (std::int32_t i = 0; i < n; ++i) {
+			auto* item = arr->IndexToObject(i);
+			auto* o = item ? reinterpret_cast<UE::UObject*>(item->object) : nullptr;
+			auto* cls = o ? o->GetClass() : nullptr;
+			if (cls && cls->IsChildOf(a_base) && (static_cast<std::int32_t>(o->objectFlags) & 0x30) == 0) {
+				out.push_back(o);
+			}
+		}
+		arr->UnlockInternalArray();
+		return out;
+	}
+
 	bool Getter::Resolve(UE::UObject* a_obj)
 	{
 		auto* cls = a_obj ? a_obj->GetClass() : nullptr;

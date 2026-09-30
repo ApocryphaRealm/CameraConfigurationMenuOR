@@ -137,7 +137,7 @@ namespace framing
 			Signals g;
 			g.weaponDrawn = a_in.weaponDrawn;
 			const auto& tag = a_in.cameraTag;
-			g.aiming = Has(tag, "Aiming");
+			g.aiming = Has(tag, "Aiming") || Has(tag, "Zooming");   // the bow drawn, or its zoom (State.Camera.*_Zooming)
 			g.horseback = Has(tag, "Horse") || Has(tag, "Mount") || Has(tag, "Riding");
 			g.conversation = Has(tag, "Dialogue");
 			g.sprinting = Has(tag, "Sprint");

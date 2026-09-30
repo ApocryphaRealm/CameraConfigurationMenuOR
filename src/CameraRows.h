@@ -1,22 +1,21 @@
 #pragma once
 
 // ============================================================================================================
-// The game's camera table, edited in place (the owner, 2026-09-30: the Aiming a bow position "doesn't seem to do
-// anything"). The camera of each state is a row of /Game/Dev/Data/DT_CameraSettings (FVCameraSettings: CameraTagsKey
-// and a ThirdPersonCameraSettingDataClose / Far / FirstPersonCameraSettingData, each an FVCameraSettingData). Two
-// captures while aiming (TestBench, 00:58 and 01:00) showed the aiming states re-reading their row every frame: CCM's
-// writes to the camera manager's CurrentCameraSettingData landed there, and the live spring arm stayed at the row's own
-// values (side 45) - the framing rebased thousands of times. So for the aiming rows CCM changes the ROW: the game then
-// applies CCM's position itself, with no per-frame fight.
+// The game's camera, edited where it lives (the owner, 2026-09-30: the Aiming a bow position "doesn't seem to do
+// anything", then "only firing when I release the arrow"). Each state of the camera manager's state machine keeps its
+// camera in an ASP_CameraSettings_C object (CameraSettings: an FVCameraSettings - CameraTagsKey and the First-person /
+// Third-person Close / Far FVCameraSettingData); while a state's tag holds, the game re-applies that object's data every
+// frame, so CCM's per-frame writes to CurrentCameraSettingData never reached the arm while aiming (TestBench captures
+// 00:58 / 01:00). There is no camera DataTable at run time (round 9's DT_CameraSettings lookup found nothing).
 //
-//   * rows whose CameraTagsKey names "Aiming" (State.Camera.Standing_Aiming, Sneaking_Aiming, ...): the Close and Far
-//     data get DesiredSocketOffset.Y (side, mirrored by the shoulder swap) and .Z (height) added, DesiredArmLength the
-//     distance, DesiredOverrideFieldOfView the field of view - from the Aiming a bow context's own position;
-//   * every row's original values are kept and each application starts from them, so a change of setting never
-//     stacks, and turning the context off (or CCM off) puts the table back exactly;
-//   * the table's RowMap is not reflected: it is read where UE 5.3 declares it (right after RowStruct) and checked
-//     against the reflected GetDataTableRowNames before a single row is written (TestBench's ue.datatable read).
-// Game thread; Tick() costs a comparison unless a setting changed or the table was reloaded.
+//   * the live states whose tags name "Aiming" or "Zooming" (Standing / Sneaking / Swimming _Aiming and _Zooming): their
+//     Close and Far data get DesiredSocketOffset.Y (side, mirrored by the shoulder swap) and .Z (height) added,
+//     DesiredArmLength the distance, DesiredOverrideFieldOfView the field of view - the Aiming a bow context's position;
+//   * the originals are kept and every application starts from them, so a change never stacks, and turning the
+//     context (or CCM) off puts the states back exactly; templates (sub-objects of class defaults) are never touched;
+//   * a new camera manager (a load) has new states: the kept objects are checked by their slots every 250 ms and the
+//     object array is scanned again, at most every 5 s, while none is usable.
+// Game thread.
 // ============================================================================================================
 
 namespace camrows

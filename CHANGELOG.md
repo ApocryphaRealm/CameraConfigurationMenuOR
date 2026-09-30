@@ -24,6 +24,18 @@ name Camera Configuration Menu. Plan: 4. plans\Camera Configuration Menu (CCM)\P
   The Status page shows which body and socket were found.
 
 ### Round 10 (the owner's report, 2026-09-30)
+- **Changed: the Aiming a bow position is written into the live camera states, not a table.** The primary session found
+  there is NO camera DataTable at run time. Each camera state of the camera manager's state machine keeps its camera in
+  an ASP_CameraSettings_C object: 20 live ones, from Standing and Dialogue to Standing_Aiming and Sneaking_Zooming. The
+  live arm while aiming was exactly Standing_Aiming's Far data.
+  - What changes: the live states whose tags name "Aiming" or "Zooming" get the context's side (mirrored by the shoulder
+    swap), height, distance and field of view added to their Close and Far data. The originals are kept, so turning the
+    context or CCM off restores them exactly. Class-default templates are never touched.
+  - After a load: the camera manager is new, so its states are found again (their slots are checked every 250 ms, and
+    the object array is scanned at most every 5 s while none is usable).
+  - Field of view: the aiming states carry no field of view of their own (0), and the view while aiming read 75, so the
+    Aiming zoom is laid on 75 there.
+  - The bow's zoom states (*_Zooming) now count as aiming in the framing too. The log says "camera states: ...".
 - **Fixed: the Aiming a bow position never reached the camera table** (the owner: "The while aiming a bow camera context
   is only firing when I release the arrow instead of while I'm aiming it").
   - Cause: round 9 looked DT_CameraSettings up by its path only. The path missed, and the miss was silent: no "camera

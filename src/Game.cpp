@@ -1,6 +1,7 @@
 #include "Game.h"
 
 #include "Compass.h"
+#include "CameraRows.h"
 #include "Conversation.h"
 #include "Framing.h"
 #include "Shake.h"
@@ -378,13 +379,15 @@ namespace game
 				g_wroteSwitches = true;
 			}
 			StartZoomedOut(a_pawn, o.ctrl, s);
+			camrows::Tick(s.enabled, g_shoulderLeft);   // Aiming a bow, in the game's own camera table
 			shake::Update(s.enabled && !s.smSprintShake);   // "Screen shake while sprinting" off = the sprint shakes silenced
 			// offsets per context, shoulder swap and smoothing
 			framing::Apply({ .manager = o.mgr, .pawn = a_pawn, .movement = o.move, .arm = o.arm, .cameraTag = tag, .weaponDrawn = combat, .enabled = s.enabled,
 				.shoulderLeft = g_shoulderLeft, .dt = dt,
 				// first person in a conversation looks straight at the speaker: no Conversation offset (the owner, 2026-09-29)
-				.noOffset = s.enabled && s.conversationFirstPersonNoOffset && tag.find("Dialogue") != std::string::npos &&
-			                (firstPerson || conversation::FirstPersonNow()),
+				// the game's conversation view is always first person (POV 0), so only the player's own choice of first
+				// person in conversations turns the offsets off - not the view (it silenced every conversation, 2026-09-30)
+				.noOffset = s.enabled && s.conversationFirstPerson && s.conversationFirstPersonNoOffset && tag.find("Dialogue") != std::string::npos,
 				.pov = ReadPov(o.ctrl) });
 			// the compass follows the camera while the free camera is on in third person (UCR's CompassBridge does the same)
 			compass::Update(o.ctrl, s.enabled && styleFree && !firstPerson && s.compassFollowsCamera && o.arm && o.move);

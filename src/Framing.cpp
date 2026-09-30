@@ -1,5 +1,6 @@
 #include "Framing.h"
 
+#include "CameraRows.h"
 #include "Reflect.h"
 #include "Settings.h"
 
@@ -95,9 +96,7 @@ namespace framing
 		Framed g_sockY{ "sideways offset" }, g_sockZ{ "height" }, g_armLen{ "arm length" };
 		// the game's own conversation camera (UpdateDialogueCamera, native) frames the speaker's DialogueFocusBoneName
 		// plus OffsetWhenInDialogue, and ignores the socket offset and arm length - the Conversation position goes here
-		Framed g_dlgX{ "conversation offset (forward)" }, g_dlgY{ "conversation offset (side)" }, g_dlgZ{ "conversation offset (height)" };
 		Framed g_fov{ "field of view" };
-		constexpr const char* kDialogueOffset = "CurrentCameraSettingData.OffsetWhenInDialogue";
 		constexpr const char* kFov = "CurrentCameraSettingData.DesiredOverrideFieldOfView";
 
 		// [Zoom] bOwnDistances: the arm length's base is the player's close / far distance instead of the game's, eased
@@ -285,12 +284,20 @@ namespace framing
 		const bool  own = gi != 0 && gi < std::size(s.fmGroups) && s.fmGroups[gi].own;
 		const auto& pos = s.fmGroups[own ? gi : 0];
 		const bool  dlg = group == Group::kConversation;   // the game's conversation camera: only its own position applies
+		// Aiming a bow is carried by the game's own camera table (CameraRows.h): the aiming states re-read their row every
+		// frame, so a per-frame write never reached the arm (TestBench captures 2026-09-30 00:58, 01:00)
+		const bool  viaTable = group == Group::kBowAiming && camrows::AimingInTable();
+		// A first-person view (POV 0) is the first-person arm - and the game's conversation camera is one (dialogue
+		// capture 2026-09-30 01:01: POV 0, the first-person arm visible, arm length 0 in the game's data). Only the
+		// Conversation context's own position moves it; nothing else is added there.
 		Offset want{ 0, 0, 0, 1, 0 };
 		const char* set = "the game's";
 		if (a_enabled && a_in.noOffset) {
 			set = "none (first person in a conversation)";
 		} else if (a_enabled && dlg && !own) {
 			set = "the game's conversation camera";
+		} else if (a_enabled && viaTable) {
+			set = "Aiming a bow (in the game's camera table)";
 		} else if (a_enabled) {
 			want = Offset{ double(pos.side), double(pos.height), double(pos.distance), dlg ? 1.0 : (a_in.shoulderLeft ? -1.0 : 1.0), own ? double(pos.fov) : 0.0 };
 			set = own ? GroupKey(group) : "Standing";
@@ -308,8 +315,10 @@ namespace framing
 		const double k = Ease(s.smOffsetEasing, g_t);
 		for (std::size_t i = 0; i < g_now.size(); ++i) g_now[i] = g_from[i] + (g_to[i] - g_from[i]) * k;
 		// in a conversation the position goes to the conversation camera's own offset, not the socket and the arm
-		const double sockSide = dlg ? 0.0 : g_now[0], sockHeight = dlg ? 0.0 : g_now[1], armDistance = dlg ? 0.0 : g_now[2];
-		const double mirror = dlg ? 1.0 : g_now[3];
+		const bool   fpView = a_in.pov == 0;
+		const bool   none = viaTable || (fpView && !(dlg && own));   // nothing added to the socket and the arm here
+		const double sockSide = none ? 0.0 : g_now[0], sockHeight = none ? 0.0 : g_now[1], armDistance = none ? 0.0 : g_now[2];
+		const double mirror = none || dlg ? 1.0 : g_now[3];
 
 		// ---- the socket offset: base + side / height, the whole Y mirrored ----
 		const bool stateChanged = a_in.cameraTag != g_lastTag;
@@ -352,27 +361,11 @@ namespace framing
 				if (!zoomOwn && std::abs(g_zoomBase - gameBase) < 1.0) g_zoomOverriding = false;   // back on the game's
 			}
 			if (!g_zoomOverriding) g_zoomBase = gameBase;
-			const double target = std::max(20.0, g_zoomBase + armDistance);
+			// the 20 cm floor is for the third-person arm only: it pushed the game's first-person conversation camera (arm 0)
+			// 20 cm behind the head - the "zoomed in third person, at a left offset" of 2026-09-30
+			const double target = std::max(fpView ? 0.0 : 20.0, g_zoomBase + armDistance);
 			g_armLen.last = target;
 			if (std::abs(target - cur) > 0.001) SetFloat(a_mgr, pa, static_cast<float>(target));
-		}
-
-		// ---- the conversation camera's own offset (the owner, 2026-09-30: "no matter what setting I change in the
-		// conversation tab, it stays locked into this left offset"): X back by the distance, Y the side, Z the height ----
-		std::array<double, 3> dlgBase{}, dlgNow{};
-		const auto& pd = Find(a_mgr, kDialogueOffset);
-		if (pd.Ok()) {
-			const auto cur = GetVec(a_mgr, pd);
-			std::array<double, 3> target = cur;
-			target[0] = g_dlgX.Target(cur[0], dlg ? -g_now[2] : 0.0, stateChanged);
-			target[1] = g_dlgY.Target(cur[1], dlg ? g_now[0] : 0.0, stateChanged);
-			target[2] = g_dlgZ.Target(cur[2], dlg ? g_now[1] : 0.0, stateChanged);
-			g_dlgX.last = target[0];
-			g_dlgY.last = target[1];
-			g_dlgZ.last = target[2];
-			if (!Near(target, cur)) SetVec(a_mgr, pd, target);
-			dlgBase = { g_dlgX.base, g_dlgY.base, g_dlgZ.base };
-			dlgNow = target;
 		}
 
 		// ---- field of view: the context's degrees added to the state's own (0 = the game's) ----
@@ -380,9 +373,9 @@ namespace framing
 		const auto& pf = Find(a_mgr, kFov);
 		if (pf.Ok()) {
 			const double cur = GetFloat(a_mgr, pf);
-			g_fov.Target(cur, g_now[4], stateChanged);
+			g_fov.Target(cur, viaTable ? 0.0 : g_now[4], stateChanged);
 			fovBase = g_fov.base;
-			if (fovBase > 1.0 || std::abs(g_now[4]) > 0.01) {
+			if (fovBase > 1.0 || (!viaTable && std::abs(g_now[4]) > 0.01)) {
 				// a state with no override of its own (0) starts from the camera manager's default
 				double base = fovBase;
 				if (base <= 1.0) {
@@ -390,7 +383,8 @@ namespace framing
 					const auto& pdf = Find(a_mgr, "DefaultFOV");
 					if (pdf.Ok()) base = GetFloat(a_mgr, pdf);
 				}
-				const double target = std::abs(g_now[4]) > 0.01 ? std::clamp(base + g_now[4], 20.0, 150.0) : fovBase;
+				const double add = viaTable ? 0.0 : g_now[4];
+				const double target = std::abs(add) > 0.01 ? std::clamp(base + add, 20.0, 150.0) : fovBase;
 				g_fov.last = target;
 				if (std::abs(target - cur) > 0.01) SetFloat(a_mgr, pf, static_cast<float>(target));
 				fovNow = target;
@@ -415,7 +409,7 @@ namespace framing
 			{ "eased", { { "side", g_now[0] }, { "height", g_now[1] }, { "distance", g_now[2] }, { "mirror", g_now[3] }, { "progress", g_t } } },
 			{ "socket_base", g_socketBase }, { "socket_now", g_socketLast }, { "socket_rebases", g_sockY.rebases + g_sockZ.rebases },
 			{ "arm_base", g_armLen.base }, { "arm_now", g_armLen.last }, { "arm_rebases", g_armLen.rebases },
-			{ "conversation_offset", { { "game", dlgBase }, { "now", dlgNow } } }, { "field_of_view", { { "game", fovBase }, { "now", fovNow } } },
+			{ "camera_table", camrows::State() }, { "first_person_view", fpView }, { "field_of_view", { { "game", fovBase }, { "now", fovNow } } },
 			{ "zoom", { { "pov", a_in.pov == 1 ? "close" : a_in.pov == 2 ? "far" : a_in.pov == 0 ? "first person" : "unknown" }, { "own_distance", zoomOwn },
 				{ "base_now", g_zoomBase } } },
 			{ "held_bases", { { "side", g_sockY.frozen }, { "height", g_sockZ.frozen }, { "distance", g_armLen.frozen } } },

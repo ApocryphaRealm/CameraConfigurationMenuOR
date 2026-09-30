@@ -342,20 +342,13 @@ namespace conversation
 			Publish();
 			g_forced = false;
 			g_checkIn = 0;
-			if (s.enabled && s.conversationFirstPerson) {
-				g_previousPov = g_gameplayPov;   // not Pov() here: the dialogue camera already reports 0
-				if (g_previousPov == 0) {
-					logger::info("conversation: already in first person");
-				} else if (SwitchPov(a_controller, 0)) {
-					g_switched = true;
-					g_checkIn = 3;   // read back in three ticks: the conversation camera may refuse a plain switch
-					logger::info("conversation: first person asked for (SwitchPOV, from view {})", g_previousPov);
-				} else {
-					logger::warn("conversation: the controller has no SwitchPOV - no first person");
-				}
-			}
+			// The game's conversation camera IS first person (dialogue capture 2026-09-30 01:01: POV 0, the first-person arm,
+			// arm length 0 in its data). "First person in conversations" therefore switches nothing: it keeps CCM's offsets
+			// off (Framing, noOffset), and the view comes back by itself when the conversation ends. SwitchPOV is not used.
+			g_previousPov = g_gameplayPov;
+			const bool fp = s.enabled && s.conversationFirstPerson;
 			Status(std::format("in a conversation{}{}", g_speaker ? " with " + g_speakerName : " (no speaker known - the game's aim stands)",
-				g_switched ? "; first person" : ""));
+				fp ? "; first person (the game's own conversation view, nothing added)" : ""));
 		} else if (g_in && gameplay && !dialogue) {
 			g_in = false;
 			EndLock();
@@ -389,7 +382,7 @@ namespace conversation
 		}
 
 		// the lock follows the view the player came in with (third person), not the dialogue camera's POV (always 0)
-		const bool lock = g_in && s.enabled && s.conversationLockOnSpeaker && g_speaker && !g_switched && g_gameplayPov != 0;
+		const bool lock = g_in && s.enabled && s.conversationLockOnSpeaker && !s.conversationFirstPerson && g_speaker && !g_switched && g_gameplayPov != 0;
 		if (lock) {
 			if (!g_pawnSearched) {
 				FindSpeakerPawn(RefOf(g_speaker));

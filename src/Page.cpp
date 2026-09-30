@@ -244,7 +244,7 @@ namespace page
 			ImGui::Spacing();
 			auto& g = s.fmGroups[static_cast<std::size_t>(framing::Group::kConversation)];
 			if (Switch(TR("ConvOwn", "Move the conversation camera (otherwise the game's own)"), &g.own)) Changed();
-			Hint(TR("ConvOwnHint", "The game's conversation camera frames the person you talk to from its own offset; these values move it."));
+			Hint(TR("ConvOwnHint", "The game's conversation camera is a first-person view of the person you talk to; these values move it (Side and Height), and Distance pulls it back."));
 			ImGui::BeginDisabled(!g.own);
 			if (precise::SliderFloat(TR("ConvSide", "Over the shoulder (side)"), &g.side, -150.0f, 150.0f, "%.0f cm")) Changed();
 			if (precise::SliderFloat(TR("ConvHeight", "Height"), &g.height, -100.0f, 150.0f, "%.0f cm")) Changed();
@@ -253,7 +253,7 @@ namespace page
 			ImGui::EndDisabled();
 			ImGui::SeparatorText(TR("SectionConvView", "View"));
 			if (Switch(TR("ConvFirstPerson", "First person in conversations"), &s.conversationFirstPerson)) Changed();
-			Hint(TR("ConvFirstPersonHint", "The view changes to first person when a conversation starts and back to the one you had when it ends."));
+			Hint(TR("ConvFirstPersonHint", "The game's conversation view is first person. On, nothing is added to it; off, the position above moves it (for example over the shoulder)."));
 			ImGui::BeginDisabled(!s.conversationFirstPerson);
 			if (Switch(TR("ConvFirstPersonNoOffset", "No offset in first person"), &s.conversationFirstPersonNoOffset)) Changed();
 			Hint(TR("ConvFirstPersonNoOffsetHint", "The camera position above is not added while you are in first person, so you look straight at the person you talk to."));

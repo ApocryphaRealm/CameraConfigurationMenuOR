@@ -23,7 +23,33 @@ name Camera Configuration Menu. Plan: 4. plans\Camera Configuration Menu (CCM)\P
     arm frozen (no inherited rotation, absolute rotation). The arm is put back when the conversation ends.
   The Status page shows which body and socket were found.
 
-### Round 9 (in progress, 2026-09-30)
+### Round 9 (2026-09-30) - from the primary session's TestBench captures while aiming and in dialogue
+- **Fixed: the Aiming a bow position did nothing.** Two captures (00:58 sneaking, 01:00 standing) showed the aiming
+  states re-read their row of the game's camera table every frame. CCM's values landed in CurrentCameraSettingData, but
+  the live spring arm stayed at the row's own values (side 45), and the framing rebased thousands of times.
+  - The Aiming a bow position now goes into the table itself (CameraRows.cpp): the Close and Far data of every row of
+    /Game/Dev/Data/DT_CameraSettings whose tags name "Aiming" get the side (mirrored by the shoulder swap), height,
+    distance and field of view added.
+  - The originals are kept, so a change never stacks, and turning the context or CCM off puts the table back exactly.
+  - The row map is read where UE 5.3 declares it and checked against GetDataTableRowNames before anything is written
+    (TestBench's ue.datatable read).
+  - The per-frame framing stands aside in that context.
+- **Fixed: the conversation camera was never first person and ignored the Conversation tab.** The dialogue capture
+  (01:01) showed the game's conversation camera is the first-person arm (POV 0, arm length 0 in its data). CCM itself
+  caused what the owner saw ("zoomed in while still in third person ... at a left offset"): its 20 cm floor on the arm
+  length pushed that camera behind the head. There were two further causes:
+  - The "no offset in first person" switch applied whenever the view was first person, which is every conversation, so
+    every Conversation value was zeroed.
+  - Round 8 routed the Conversation position to OffsetWhenInDialogue, which the game leaves at 0; the capture showed
+    CCM's usual socket and arm writes do reach the dialogue camera.
+  - Now: no floor on a first-person view, and nothing is added to a first-person view except the Conversation context's
+    own position. "No offset" applies only when first person in conversations is chosen. The Conversation position goes
+    through the socket offset and arm length again. First person in conversations switches no view: the game's view
+    already is first person.
+- **Fixed: the speaker lock stood down for the whole conversation.** The dialogue camera reports POV 0 all through a
+  conversation (log 00:48:52: "already in first person" from third person). The lock was gated on POV != 0, so it ran
+  only on the last frame, as the conversation ended. It now goes by the view the player had in gameplay before the
+  conversation, and stays off when first person in conversations is chosen.
 - **Fixed: the speaker lock stood down for the whole conversation.** The game's dialogue camera reports POV 0 (first
   person) all through a conversation while it places the camera itself (log 00:48:52: "already in first person" from
   third person). The lock was gated on POV != 0, so it ran only on the last frame, as the conversation ended. The lock

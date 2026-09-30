@@ -32,6 +32,13 @@ name Camera Configuration Menu. Plan: 4. plans\Camera Configuration Menu (CCM)\P
   - The crosshair's bow test missed the fully drawn bow's *_Zooming camera state; it now uses the same signal as the
     framing's "Aiming a bow" (Aiming or Zooming).
   - Each shown / hidden change is logged at info with the reason and the camera state.
+- **Fixed: Ultimate Combat Redux's lock-on refused after a conversation** (the owner: "the lock-on feature isn't
+  working now"; UCR's log: "engage refused - first-person active" on every press after a conversation). The
+  conversation held in third person is locked with ForceAndLockPOV once the camera state says Dialogue - by then the
+  game has already switched to the conversation's first person, so UnlockAndRestorePOV at the end restored first
+  person as the saved view, and the switch back (not the new default) left the controller wanting first person. The
+  player's view now goes back as the default, is read back ten ticks later (POV and WantedPOV, both logged) and is
+  set again if either is not the player's view.
 
 ### Round 10 (the owner's report, 2026-09-30)
 - **Changed: "Move the conversation camera" holds the conversation in third person** (the owner: "the third person

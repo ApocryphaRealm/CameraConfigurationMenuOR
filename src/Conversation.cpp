@@ -28,6 +28,7 @@ namespace conversation
 		bool           g_forced = false;           // the switch did not hold in the conversation: ForceAndLockPOV was used
 		bool           g_thirdForced = false;      // the conversation is held in third person (Move the conversation camera)
 		int            g_checkIn = 0;              // ticks until the switch is read back
+		int            g_releaseCheck = 0;         // ticks until the view after a released conversation is read back
 		std::uint8_t   g_previousPov = 1;          // EVPlayerPOVType: 0 first person, 1 third close, 2 third far
 		// The view the player had in GAMEPLAY, followed every tick outside a conversation. The game's own dialogue camera
 		// reports POV 0 (first person) for the whole conversation while it frames the speaker itself (log 2026-09-30
@@ -125,13 +126,29 @@ namespace conversation
 			return c && c.Run();
 		}
 
-		bool SwitchPov(UE::UObject* a_ctrl, std::uint8_t a_pov)
+		bool SwitchPov(UE::UObject* a_ctrl, std::uint8_t a_pov, bool a_newDefault = false)
 		{
 			ue::Call c(a_ctrl, L"SwitchPOV");
 			if (!c) return false;
 			c.Set("TargetPOV", a_pov);
-			c.Set("bSetToNewDefaultState", false);
+			c.Set("bSetToNewDefaultState", a_newDefault);
 			return c.Run();
+		}
+
+		// the view the controller wants (WantedPOV), as Ultimate Combat Redux reads it - 0xFF when there is no such field
+		std::uint8_t WantedPov(UE::UObject* a_ctrl)
+		{
+			auto* cls = a_ctrl ? a_ctrl->GetClass() : nullptr;
+			const auto off = cls ? ue::Offset(cls, "WantedPOV") : -1;
+			auto* p = off >= 0 ? ue::At<std::uint8_t>(a_ctrl, off) : nullptr;
+			return p ? *p : 0xFF;
+		}
+
+		void SetWantedPov(UE::UObject* a_ctrl, std::uint8_t a_pov)
+		{
+			auto* cls = a_ctrl ? a_ctrl->GetClass() : nullptr;
+			const auto off = cls ? ue::Offset(cls, "WantedPOV") : -1;
+			if (auto* p = off >= 0 ? ue::At<std::uint8_t>(a_ctrl, off) : nullptr) *p = a_pov;
 		}
 
 		double Normal(double a)
@@ -375,9 +392,17 @@ namespace conversation
 			g_in = false;
 			EndLock();
 			if (g_thirdForced) {
+				// UnlockAndRestorePOV restores the view saved when the lock was taken - the conversation's own first person,
+				// since the game switches to it before the camera state says Dialogue - and a switch back that was not the new
+				// default left the controller WANTING first person: Ultimate Combat Redux then read first person and refused
+				// every lock-on (the owner, 2026-09-30: "the lock-on feature isn't working now"; its log: "engage refused -
+				// first-person active" from the conversation at 03:15:39 on). The player's view goes back as the default, and
+				// is read back a few ticks later.
 				UnlockPov(a_controller);   // the game's own view handling back
-				SwitchPov(a_controller, g_previousPov);
-				logger::info("conversation: third person released (the view put back: {})", g_previousPov == 2 ? "far" : "close");
+				SwitchPov(a_controller, g_previousPov, true);
+				g_releaseCheck = 10;
+				logger::info("conversation: third person released (the view put back: {}; POV {}, WantedPOV {})", g_previousPov == 2 ? "far" : "close",
+					Pov(a_controller), WantedPov(a_controller));
 				g_thirdForced = false;
 			}
 			if (g_switched) {
@@ -393,6 +418,21 @@ namespace conversation
 			g_speaker = 0;
 			g_pawn = {};
 			g_mesh = {};
+		}
+
+		// after a released conversation: the controller must have AND want the player's view, or anything reading WantedPOV
+		// (Ultimate Combat Redux's lock-on) still sees first person
+		if (!g_in && g_releaseCheck > 0 && --g_releaseCheck == 0) {
+			const auto pov = Pov(a_controller);
+			const auto wanted = WantedPov(a_controller);
+			if (pov != g_previousPov || (wanted != 0xFF && wanted != g_previousPov)) {
+				SwitchPov(a_controller, g_previousPov, true);
+				if (wanted != 0xFF && WantedPov(a_controller) != g_previousPov) SetWantedPov(a_controller, g_previousPov);
+				logger::warn("conversation: after the release the view was POV {} / WantedPOV {}, not {} - set again (now POV {} / WantedPOV {})", pov, wanted,
+					g_previousPov, Pov(a_controller), WantedPov(a_controller));
+			} else {
+				logger::info("conversation: after the release the view is POV {} / WantedPOV {} - as before the conversation", pov, wanted);
+			}
 		}
 
 		// the first-person switch, read back: still not first person -> forced and locked for the conversation

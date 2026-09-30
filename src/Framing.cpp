@@ -115,7 +115,7 @@ namespace framing
 
 		struct Signals
 		{
-			bool   sneaking = false, sprinting = false, swimming = false, aiming = false, horseback = false, weaponDrawn = false, bow = false;
+			bool   sneaking = false, sprinting = false, swimming = false, aiming = false, horseback = false, weaponDrawn = false, bow = false, conversation = false;
 			double speed = 0.0;   // horizontal, cm/s
 			std::string weaponType;   // the held weapon's WeaponTypeTag ("WeaponType.Bow"), "" with none
 		};
@@ -129,6 +129,7 @@ namespace framing
 			const auto& tag = a_in.cameraTag;
 			g.aiming = Has(tag, "Aiming");
 			g.horseback = Has(tag, "Horse") || Has(tag, "Mount") || Has(tag, "Riding");
+			g.conversation = Has(tag, "Dialogue");
 			g.sprinting = Has(tag, "Sprint");
 			g.swimming = Has(tag, "Swim");
 			g.sneaking = Has(tag, "Sneak");
@@ -172,6 +173,7 @@ namespace framing
 		framing::Group Pick(const Signals& g)
 		{
 			using G = framing::Group;
+			if (g.conversation) return G::kConversation;
 			if (g.horseback) return G::kHorseback;
 			if (g.swimming) return G::kSwimming;
 			if (g.bow) return G::kBow;
@@ -208,6 +210,7 @@ namespace framing
 		case Group::kBow: return "Bow";
 		case Group::kSwimming: return "Swimming";
 		case Group::kHorseback: return "Horseback";
+		case Group::kConversation: return "Conversation";
 		default: return "Standing";
 		}
 	}
@@ -327,7 +330,7 @@ namespace framing
 		g_state = json{
 			{ "context", GroupKey(group) }, { "offsets_from", set },
 			{ "signals", { { "sneaking", sig.sneaking }, { "sprinting", sig.sprinting }, { "swimming", sig.swimming }, { "bow_aiming", sig.aiming }, { "weapon_type", sig.weaponType },
-				{ "horseback", sig.horseback }, { "weapon_drawn", sig.weaponDrawn }, { "speed", sig.speed }, { "camera_tag", a_in.cameraTag } } },
+				{ "horseback", sig.horseback }, { "conversation", sig.conversation }, { "weapon_drawn", sig.weaponDrawn }, { "speed", sig.speed }, { "camera_tag", a_in.cameraTag } } },
 			{ "eased", { { "side", g_now[0] }, { "height", g_now[1] }, { "distance", g_now[2] }, { "mirror", g_now[3] }, { "progress", g_t } } },
 			{ "socket_base", g_socketBase }, { "socket_now", g_socketLast }, { "socket_rebases", g_sockY.rebases + g_sockZ.rebases },
 			{ "arm_base", g_armLen.base }, { "arm_now", g_armLen.last }, { "arm_rebases", g_armLen.rebases },

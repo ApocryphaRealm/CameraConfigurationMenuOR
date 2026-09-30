@@ -70,6 +70,15 @@ name Camera Configuration Menu. Plan: 4. plans\Camera Configuration Menu (CCM)\P
 - The smoothing sliders write the spring arm (CameraLagSpeed, CameraLagMaxDistance, CameraRotationLagSpeedPitch / Yaw):
   the setting data's own lag fields read 0 in game.
 
+### Added (conversation camera)
+- A Conversation tab (the owner, relayed 2026-09-29: "add to CCM a conversation camera tab"): a ninth framing context,
+  Conversation, detected by the game's own camera state State.Camera.Dialogue (seen in CCM's log) and above every other
+  context, with its own AMF page: its own position (side / height / distance added to the game's conversation camera,
+  or Standing's) and the free camera's behaviour in conversations. [Framing.Conversation] bOwn / fSide / fHeight /
+  fDistance; the Framing page's context list has it too.
+- [General] bStandDownInDialogue now does what its description always said - it was declared but never read: while a
+  conversation runs the game's own camera switches are put back (the free camera stands down); off keeps the free camera.
+
 ### Changed (keys)
 - CCM's default keys moved off K and L, which go to Minimap Menu (the owner, 2026-09-29: "we haven't even released CCM,
   so we can change its camera shoulder keys. Let's use K and L" for the minimap): the shoulder swap is now [ (26) and

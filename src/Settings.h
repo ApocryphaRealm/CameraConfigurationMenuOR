@@ -57,7 +57,7 @@ namespace settings
 		};
 		// a C array, never std::array: offsetof(Values, fmGroups[3].side) through std::array::operator[] resolved to
 		// offset 0-12 under MSVC and the table read and wrote enabled / cameraStyle / the turn times (2026-09-29)
-		FramingGroup fmGroups[8]{};
+		FramingGroup fmGroups[9]{};   // [8] Conversation (2026-09-29)
 
 		// [Smoothing] - plan 7.3. -1 = the game's own value for the state.
 		bool         smEaseOffsets = true;     // a new position slides in instead of cutting

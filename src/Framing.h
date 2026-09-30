@@ -35,6 +35,7 @@ namespace framing
 		kBow,           // bInCombatStance with a bow: WeaponsPairingComponent.WeaponActor.WeaponTypeTag "WeaponType.Bow" (as UCR reads it)
 		kSwimming,      // the movement component's IsSwimming
 		kHorseback,     // a camera state tag naming a horse or a mount (NOT YET SEEN in game - to be confirmed)
+		kConversation,  // the camera state tag State.Camera.Dialogue (seen in game) - above every other context
 		kCount
 	};
 	const char* GroupKey(Group a_g);    // "Moving" ... - the INI section is "Framing.<key>"

@@ -123,7 +123,7 @@ namespace page
 			Hint(TR("FramingIntro", "Where the camera sits in each context, added to the game's own position, in centimetres. 0 is the unmodded camera. Pick a context to edit; \"Now\" shows the one you are in."));
 
 			ImGui::SeparatorText(TR("SectionPosition", "Camera position"));
-			const char* groups[static_cast<int>(framing::Group::kCount)] = { TR("GroupStanding", "Standing"), TR("GroupMoving", "Walking or running"), TR("GroupSprinting", "Sprinting"), TR("GroupSneaking", "Sneaking"), TR("GroupWeaponDrawn", "Weapon drawn"), TR("GroupBow", "Bow"), TR("GroupSwimming", "Swimming"), TR("GroupHorseback", "On horseback") };
+			const char* groups[static_cast<int>(framing::Group::kCount)] = { TR("GroupStanding", "Standing"), TR("GroupMoving", "Walking or running"), TR("GroupSprinting", "Sprinting"), TR("GroupSneaking", "Sneaking"), TR("GroupWeaponDrawn", "Weapon drawn"), TR("GroupBow", "Bow"), TR("GroupSwimming", "Swimming"), TR("GroupHorseback", "On horseback") , TR("GroupConversation", "In a conversation") };
 			const int now = static_cast<int>(framing::Current());
 			ImGui::Text(TR("GroupNow", "Now: %s"), groups[std::clamp(now, 0, static_cast<int>(framing::Group::kCount) - 1)]);
 			static int s_edit = 0;
@@ -201,6 +201,29 @@ namespace page
 		}
 
 		// Better Third-Person Selection, inside CCM (plan 13.2)
+		// The conversation camera (the owner: "add to CCM a conversation camera tab") - the Conversation context's own
+		// position, and whether the free camera stands down while a conversation runs
+		void DrawConversation()
+		{
+			if (!Begin()) return;
+			auto& s = settings::Get();
+			Hint(TR("ConvIntro", "The camera while you talk to someone. The game's conversation camera is the base; these values are added to it."));
+			const bool now = framing::Current() == framing::Group::kConversation;
+			ImGui::Text("%s %s", TR("ConvNow", "In a conversation now:"), now ? TR("Yes", "yes") : TR("No", "no"));
+			ImGui::Spacing();
+			auto& g = s.fmGroups[static_cast<std::size_t>(framing::Group::kConversation)];
+			if (Switch(TR("ConvOwn", "Its own camera position in conversations (otherwise Standing's)"), &g.own)) Changed();
+			ImGui::BeginDisabled(!g.own);
+			if (ImGui::SliderFloat(TR("ConvSide", "Over the shoulder (side)"), &g.side, -150.0f, 150.0f, "%.0f cm")) Changed();
+			if (ImGui::SliderFloat(TR("ConvHeight", "Height"), &g.height, -100.0f, 150.0f, "%.0f cm")) Changed();
+			if (ImGui::SliderFloat(TR("ConvDistance", "Distance"), &g.distance, -300.0f, 600.0f, "%.0f cm")) Changed();
+			ImGui::EndDisabled();
+			ImGui::SeparatorText(TR("SectionConvCamera", "Free camera"));
+			if (Switch(TR("ConvStandDown", "The game's own camera behaviour in conversations"), &s.standDownInDialogue)) Changed();
+			Hint(TR("ConvStandDownHint", "On: the free camera stands down while you talk, as the game does it. Off: the free camera stays on."));
+			SaveIfSettled();
+		}
+
 		void DrawSelection()
 		{
 			if (!Begin()) return;
@@ -312,9 +335,10 @@ namespace page
 		}
 		const bool a = AMF::RegisterPage(kModName, "Camera", &DrawCamera);
 		const bool f = AMF::RegisterPage(kModName, "Framing", &DrawFraming);
+		const bool v = AMF::RegisterPage(kModName, "Conversation", &DrawConversation);
 		const bool c = AMF::RegisterPage(kModName, "Selection", &DrawSelection);
 		const bool d = AMF::RegisterPage(kModName, "Crosshair", &DrawCrosshair);
 		const bool b = AMF::RegisterPage(kModName, "Status", &DrawStatus);
-		logger::info("AMF {} (API {}): pages Camera={}, Framing={}, Selection={}, Crosshair={}, Status={}", AMF::Version(), AMF::APIVersion(), a, f, c, d, b);
+		logger::info("AMF {} (API {}): pages Camera={}, Framing={}, Conversation={}, Selection={}, Crosshair={}, Status={}", AMF::Version(), AMF::APIVersion(), a, f, v, c, d, b);
 	}
 }

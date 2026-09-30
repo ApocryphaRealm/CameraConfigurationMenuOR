@@ -287,13 +287,16 @@ namespace game
 			bool attacking = false;
 			const char* mode = "vanilla";
 			bool locked = false;
-			const bool styleFree = s.enabled && (s.cameraStyle == 1 || s.cameraStyle == 2);
+			// [General] bStandDownInDialogue: the game's own camera switches while a conversation runs (the game's camera
+			// state State.Camera.Dialogue); the Conversation framing context still applies
+			const bool standDown = s.enabled && s.standDownInDialogue && tag.find("Dialogue") != std::string::npos;
+			const bool styleFree = s.enabled && !standDown && (s.cameraStyle == 1 || s.cameraStyle == 2);
 
 			if (!o.arm || !o.move) {
 				mode = "waiting for the camera arm";
 			} else if (!styleFree) {
-				RestoreVanilla(o, s.enabled ? "style is vanilla" : "CCM is off");
-				mode = s.enabled ? "vanilla style" : "off";
+				RestoreVanilla(o, standDown ? "a conversation" : (s.enabled ? "style is vanilla" : "CCM is off"));
+				mode = standDown ? "conversation - the game's camera" : (s.enabled ? "vanilla style" : "off");
 			} else {
 				if (!g_vanillaRecorded) {
 					g_vanilla = ReadSwitches(o);

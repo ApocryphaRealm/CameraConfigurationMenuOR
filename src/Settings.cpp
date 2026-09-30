@@ -12,8 +12,8 @@ namespace settings
 		using K = Field::Kind;
 #define CCM_ROW(sec, key, kind, member, def, lo, hi, comment) Field{ sec, key, K::kind, offsetof(Values, member), def, lo, hi, comment }
 		// an indexed member must land inside its array (std::array's operator[] once sent every framing row to offset 0-12)
-		static_assert(offsetof(Values, fmGroups[7].distance) ==
-		              offsetof(Values, fmGroups) + 7 * sizeof(Values::FramingGroup) + offsetof(Values::FramingGroup, distance));
+		static_assert(offsetof(Values, fmGroups[8].distance) ==
+		              offsetof(Values, fmGroups) + 8 * sizeof(Values::FramingGroup) + offsetof(Values::FramingGroup, distance));
 
 		// ONE ROW PER LINE - tools/write-ini.py parses these rows to write the shipped INI.
 		const std::vector<Field> kTable = {
@@ -73,6 +73,10 @@ namespace settings
 			CCM_ROW("Framing.Horseback", "fSide", kFloat, fmGroups[7].side, 0, -150, 150, ""),
 			CCM_ROW("Framing.Horseback", "fHeight", kFloat, fmGroups[7].height, 0, -100, 150, ""),
 			CCM_ROW("Framing.Horseback", "fDistance", kFloat, fmGroups[7].distance, 0, -300, 600, ""),
+			CCM_ROW("Framing.Conversation", "bOwn", kBool, fmGroups[8].own, 0, 0, 1, "In a conversation (the game's dialogue camera) - above every other context. 1 = its own position below; 0 = Standing's."),
+			CCM_ROW("Framing.Conversation", "fSide", kFloat, fmGroups[8].side, 0, -150, 150, ""),
+			CCM_ROW("Framing.Conversation", "fHeight", kFloat, fmGroups[8].height, 0, -100, 150, ""),
+			CCM_ROW("Framing.Conversation", "fDistance", kFloat, fmGroups[8].distance, 0, -300, 600, ""),
 			CCM_ROW("Smoothing", "bEaseOffsets", kBool, smEaseOffsets, 1, 0, 1, "1 = a new camera position (a setting, a change of context, the shoulder swap) slides in instead of cutting."),
 			CCM_ROW("Smoothing", "iOffsetEasing", kInt, smOffsetEasing, 15, 0, 21, "The slide's curve: 0 linear; 1-3 quadratic, 4-6 cubic, 7-9 quartic, 10-12 quintic, 13-15 sine, 16-18 circular, 19-21 exponential (each in, out, in-out)."),
 			CCM_ROW("Smoothing", "fOffsetSeconds", kFloat, smOffsetSeconds, 0.5, 0, 5, "Seconds the slide takes."),

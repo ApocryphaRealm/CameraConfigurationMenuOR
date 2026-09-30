@@ -345,10 +345,18 @@ namespace game
 							logger::info("vanity camera: off - the idle timer is kept stopped");
 						}
 					} else if (s_stopped) {
-						ue::Call set(o.mgr, L"SetVanityCameraTimer");
-						if (set) set.Run();
-						s_stopped = false;
-						logger::info("vanity camera: on again - the game's idle timer is set");
+						// not while AMF's window is open: the framework holds the timer stopped for its window ([Menu]
+						// bKeepCameraAwake) and restarts it itself on close - setting it now could start the idle camera
+						// behind the menu (the switch is usually turned on from that window)
+						const auto pageMs = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now().time_since_epoch()).count();
+						if (pageMs - g_pageDrawnAt.load(std::memory_order_relaxed) < 500) {
+							s_nextVanity = nowMs + 250;   // asked again once the window has closed
+						} else {
+							ue::Call set(o.mgr, L"SetVanityCameraTimer");
+							if (set) set.Run();
+							s_stopped = false;
+							logger::info("vanity camera: on again - the game's idle timer is set");
+						}
 					}
 				}
 				static bool s_exited = false;

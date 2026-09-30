@@ -23,6 +23,29 @@ name Camera Configuration Menu. Plan: 4. plans\Camera Configuration Menu (CCM)\P
     arm frozen (no inherited rotation, absolute rotation). The arm is put back when the conversation ends.
   The Status page shows which body and socket were found.
 
+### Round 8 (the owner's report, 2026-09-30)
+- **Fixed: the conversation settings did nothing.** The owner: "no matter what setting I change in the conversation tab,
+  it stays locked into this left offset for the conversation camera where it's not first person, but it's really zoomed
+  in third person." There were two causes:
+  - **The speaker was never found.** `LookupByID<TESObjectREFR>` tests the exact form type, and a person is an ACHR, so
+    every lookup came back null (log: "in a conversation with (no name)", "body no speaker"). The name, the Unreal
+    body and the lock never ran. The reference is now taken for REFR, ACHR and ACRE.
+  - **The game's conversation camera is a camera of its own.** UpdateDialogueCamera is native: it frames the speaker's
+    DialogueFocusBoneName plus `CurrentCameraSettingData.OffsetWhenInDialogue` and ignores the socket offset and arm
+    length that CCM wrote. The Conversation position now moves that offset: X back by the distance, Y the side, Z the
+    height. The axes are assumed and the Status page shows the game's value and ours, so the first test settles them.
+  - The switch now reads "Move the conversation camera (otherwise the game's own)". Off leaves the game's camera alone
+    instead of applying Standing's position.
+- **First person in conversations is read back.** Three ticks after SwitchPOV the view is checked. If the conversation
+  camera refused the switch, `ForceAndLockPOV(FirstPerson)` is used, and `UnlockAndRestorePOV` then the previous view
+  when the conversation ends. The log shows each step.
+- **Added: an "Aiming a bow" context** (the owner: "I don't want to necessarily get rid of the while holding a bow offset,
+  but I do want another one for while aiming the bow"). It applies while the camera state is an aiming state
+  (State.Camera.Standing_Aiming, seen in game), ranks above Bow, and has its own position plus an **Aiming zoom (field of
+  view)** slider: degrees added to the game's aiming field of view. The owner: "the camera always zooms in to a specific
+  way whenever I draw the bow, and the offset doesn't seem to affect it". Bow is now holding a bow without drawing it.
+- **Added: a Zoom (field of view) slider in conversations** (`[Framing.Conversation] fFieldOfView`).
+
 ### Added (late on 2026-09-29) - the zoom
 - `[Zoom] bStartZoomedOut` (on by default): after loading a game, the view starts at the game's far third-person zoom
   instead of the close one. The owner asked for this: "when you load into the game you're already fully zoomed out

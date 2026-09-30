@@ -64,10 +64,11 @@ namespace settings
 			float side = 0.0f;       // -150-150, + = further to the right of the character
 			float height = 0.0f;     // -100-150
 			float distance = 0.0f;   // -300-600, + = further back
+			float fov = 0.0f;        // degrees added to the field of view (Aiming a bow and Conversation have a row)
 		};
 		// a C array, never std::array: offsetof(Values, fmGroups[3].side) through std::array::operator[] resolved to
 		// offset 0-12 under MSVC and the table read and wrote enabled / cameraStyle / the turn times (2026-09-29)
-		FramingGroup fmGroups[9]{};   // [8] Conversation (2026-09-29)
+		FramingGroup fmGroups[10]{};   // [8] Conversation (2026-09-29), [9] Aiming a bow (2026-09-30)
 
 		// [Smoothing] - plan 7.3. -1 = the game's own value for the state.
 		bool         smEaseOffsets = true;     // a new position slides in instead of cutting

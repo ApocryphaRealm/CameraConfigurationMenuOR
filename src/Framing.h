@@ -36,6 +36,7 @@ namespace framing
 		kSwimming,      // the movement component's IsSwimming
 		kHorseback,     // a camera state tag naming a horse or a mount (NOT YET SEEN in game - to be confirmed)
 		kConversation,  // the camera state tag State.Camera.Dialogue (seen in game) - above every other context
+		kBowAiming,     // the bow drawn: a camera state tag with "Aiming" (State.Camera.Standing_Aiming, seen in game) - above Bow
 		kCount
 	};
 	const char* GroupKey(Group a_g);    // "Moving" ... - the INI section is "Framing.<key>"

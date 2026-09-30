@@ -24,6 +24,8 @@ namespace conversation
 
 		bool           g_in = false;
 		bool           g_switched = false;
+		bool           g_forced = false;           // the switch did not hold in the conversation: ForceAndLockPOV was used
+		int            g_checkIn = 0;              // ticks until the switch is read back
 		std::uint8_t   g_previousPov = 1;          // EVPlayerPOVType: 0 first person, 1 third close, 2 third far
 		RE::TESFormID  g_lastTalkable = 0;         // the last person or creature the player could activate, in gameplay
 		ULONGLONG      g_lastTalkableAt = 0;
@@ -71,6 +73,23 @@ namespace conversation
 			g_status = std::move(a_s);
 		}
 
+		// the speaker's reference. NOT LookupByID<TESObjectREFR>: As<T>() tests the exact form type, and a person is an
+		// ACHR (Actor), so it came back null every time - no name, no body, and the lock never ran (log 2026-09-29 23:59:
+		// "in a conversation with (no name)", "body no speaker")
+		RE::TESObjectREFR* RefOf(RE::TESFormID a_id)
+		{
+			auto* form = a_id ? RE::TESForm::LookupByID(a_id) : nullptr;
+			if (!form) return nullptr;
+			switch (form->GetFormType()) {
+			case RE::FormType::Reference:
+			case RE::FormType::ActorCharacter:
+			case RE::FormType::ActorCreature:
+				return static_cast<RE::TESObjectREFR*>(form);
+			default:
+				return nullptr;
+			}
+		}
+
 		bool Talkable(RE::TESObjectREFR* a_ref)
 		{
 			auto* base = a_ref ? a_ref->data.objectReference : nullptr;
@@ -84,6 +103,20 @@ namespace conversation
 			const auto off = cls ? ue::Offset(cls, "POV") : -1;
 			auto* p = off >= 0 ? ue::At<std::uint8_t>(a_ctrl, off) : nullptr;
 			return p ? *p : 1;
+		}
+
+		bool ForcePov(UE::UObject* a_ctrl, std::uint8_t a_pov)
+		{
+			ue::Call c(a_ctrl, L"ForceAndLockPOV");
+			if (!c) return false;
+			c.Set("TargetPOV", a_pov);
+			return c.Run();
+		}
+
+		bool UnlockPov(UE::UObject* a_ctrl)
+		{
+			ue::Call c(a_ctrl, L"UnlockAndRestorePOV");
+			return c && c.Run();
 		}
 
 		bool SwitchPov(UE::UObject* a_ctrl, std::uint8_t a_pov)
@@ -184,7 +217,7 @@ namespace conversation
 					if (a_out[0] != 0.0 || a_out[1] != 0.0 || a_out[2] != 0.0) return true;
 				}
 			}
-			auto* ref = g_speaker ? RE::TESForm::LookupByID<RE::TESObjectREFR>(g_speaker) : nullptr;
+			auto* ref = g_speaker ? RefOf(g_speaker) : nullptr;
 			if (!ref) return false;
 			RE::NiPoint3 head = ref->data.location;
 			head.z += 115.0f;   // about eye height on a person (Oblivion units)
@@ -298,14 +331,22 @@ namespace conversation
 			g_pawnSearched = false;
 			g_pawnMatch = "not looked for";
 			g_speaker = now - g_lastTalkableAt < 3000 ? g_lastTalkable : 0;
-			auto* ref = g_speaker ? RE::TESForm::LookupByID<RE::TESObjectREFR>(g_speaker) : nullptr;
+			auto* ref = g_speaker ? RefOf(g_speaker) : nullptr;
 			const char* n = ref && ref->data.objectReference ? RE::TESFullName::GetFullName(ref->data.objectReference) : nullptr;
 			g_speakerName = n && *n ? n : (g_speaker ? "(no name)" : "");
 			Publish();
+			g_forced = false;
+			g_checkIn = 0;
 			if (s.enabled && s.conversationFirstPerson) {
 				g_previousPov = Pov(a_controller);
-				if (g_previousPov != 0 && SwitchPov(a_controller, 0)) {
+				if (g_previousPov == 0) {
+					logger::info("conversation: already in first person");
+				} else if (SwitchPov(a_controller, 0)) {
 					g_switched = true;
+					g_checkIn = 3;   // read back in three ticks: the conversation camera may refuse a plain switch
+					logger::info("conversation: first person asked for (SwitchPOV, from view {})", g_previousPov);
+				} else {
+					logger::warn("conversation: the controller has no SwitchPOV - no first person");
 				}
 			}
 			Status(std::format("in a conversation{}{}", g_speaker ? " with " + g_speakerName : " (no speaker known - the game's aim stands)",
@@ -314,8 +355,13 @@ namespace conversation
 			g_in = false;
 			EndLock();
 			if (g_switched) {
+				if (g_forced) {
+					UnlockPov(a_controller);   // the game's lock off, the view before it back
+				}
 				SwitchPov(a_controller, g_previousPov);   // the view the player had before the conversation
+				logger::info("conversation: the view put back ({}{})", g_previousPov == 2 ? "far" : "close", g_forced ? ", unlocked" : "");
 				g_switched = false;
+				g_forced = false;
 			}
 			Status(g_overridden > 0 ? std::format("the conversation ended (the game's own aim replaced ours {} times)", g_overridden) : "the conversation ended");
 			g_speaker = 0;
@@ -323,10 +369,24 @@ namespace conversation
 			g_mesh = {};
 		}
 
+		// the first-person switch, read back: still not first person -> forced and locked for the conversation
+		if (g_in && g_switched && g_checkIn > 0 && --g_checkIn == 0) {
+			const auto pov = Pov(a_controller);
+			if (pov != 0 && !g_forced) {
+				g_forced = ForcePov(a_controller, 0);
+				logger::info("conversation: the switch to first person did not hold (view {}) - {}", pov,
+					g_forced ? "forced and locked with ForceAndLockPOV" : "no ForceAndLockPOV on the controller");
+				if (g_forced) g_checkIn = 3;
+			} else {
+				logger::info("conversation: {} (view {}{})", pov == 0 ? "first person holds" : "first person did NOT hold even forced", pov,
+					g_forced ? ", forced" : "");
+			}
+		}
+
 		const bool lock = g_in && s.enabled && s.conversationLockOnSpeaker && g_speaker && !g_switched && Pov(a_controller) != 0;
 		if (lock) {
 			if (!g_pawnSearched) {
-				FindSpeakerPawn(RE::TESForm::LookupByID<RE::TESObjectREFR>(g_speaker));
+				FindSpeakerPawn(RefOf(g_speaker));
 				Status(std::format("in a conversation with {}; the camera holds on them - body {}", g_speakerName, g_pawnMatch));
 			}
 			Aim(a_controller, a_cameraManager, a_arm);

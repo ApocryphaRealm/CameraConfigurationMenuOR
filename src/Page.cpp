@@ -129,7 +129,7 @@ namespace page
 			Hint(TR("FramingIntro", "Where the camera sits in each context, added to the game's own position, in centimetres. 0 is the unmodded camera. Pick a context to edit; \"Now\" shows the one you are in."));
 
 			ImGui::SeparatorText(TR("SectionPosition", "Camera position"));
-			const char* groups[static_cast<int>(framing::Group::kCount)] = { TR("GroupStanding", "Standing"), TR("GroupMoving", "Walking or running"), TR("GroupSprinting", "Sprinting"), TR("GroupSneaking", "Sneaking"), TR("GroupWeaponDrawn", "Weapon drawn"), TR("GroupBow", "Bow"), TR("GroupSwimming", "Swimming"), TR("GroupHorseback", "On horseback") , TR("GroupConversation", "In a conversation") };
+			const char* groups[static_cast<int>(framing::Group::kCount)] = { TR("GroupStanding", "Standing"), TR("GroupMoving", "Walking or running"), TR("GroupSprinting", "Sprinting"), TR("GroupSneaking", "Sneaking"), TR("GroupWeaponDrawn", "Weapon drawn"), TR("GroupBow", "Bow"), TR("GroupSwimming", "Swimming"), TR("GroupHorseback", "On horseback"), TR("GroupConversation", "In a conversation"), TR("GroupBowAiming", "Aiming a bow") };
 			const int now = static_cast<int>(framing::Current());
 			ImGui::Text(TR("GroupNow", "Now: %s"), groups[std::clamp(now, 0, static_cast<int>(framing::Group::kCount) - 1)]);
 			static int s_edit = 0;
@@ -146,6 +146,12 @@ namespace page
 			if (precise::SliderFloat(TR("Side", "Over the shoulder (side)"), &g.side, -150.0f, 150.0f, "%.0f cm")) Changed();
 			if (precise::SliderFloat(TR("Height", "Height"), &g.height, -100.0f, 150.0f, "%.0f cm")) Changed();
 			if (precise::SliderFloat(TR("Distance", "Distance behind"), &g.distance, -300.0f, 600.0f, "%.0f cm")) Changed();
+			if (s_edit == static_cast<int>(framing::Group::kBowAiming)) {
+				if (precise::SliderFloat(TR("AimFov", "Aiming zoom (field of view)"), &g.fov, -40.0f, 40.0f, "%+.0f degrees")) Changed();
+				Hint(TR("AimFovHint", "The game zooms in when you draw a bow. Below 0 zooms in further, above 0 less; 0 is the game's."));
+			} else if (s_edit == static_cast<int>(framing::Group::kBow)) {
+				Hint(TR("BowHint", "Holding a bow. While it is drawn, Aiming a bow is used instead."));
+			}
 			ImGui::EndDisabled();
 			if (s_edit != 0 && ImGui::Button(TR("GroupCopy", "Copy Standing's position here"))) {
 				g.side = s.fmGroups[0].side, g.height = s.fmGroups[0].height, g.distance = s.fmGroups[0].distance;
@@ -237,11 +243,13 @@ namespace page
 			ImGui::TextDisabled("%s", conversation::State().value("status", std::string{}).c_str());
 			ImGui::Spacing();
 			auto& g = s.fmGroups[static_cast<std::size_t>(framing::Group::kConversation)];
-			if (Switch(TR("ConvOwn", "Its own camera position in conversations (otherwise Standing's)"), &g.own)) Changed();
+			if (Switch(TR("ConvOwn", "Move the conversation camera (otherwise the game's own)"), &g.own)) Changed();
+			Hint(TR("ConvOwnHint", "The game's conversation camera frames the person you talk to from its own offset; these values move it."));
 			ImGui::BeginDisabled(!g.own);
 			if (precise::SliderFloat(TR("ConvSide", "Over the shoulder (side)"), &g.side, -150.0f, 150.0f, "%.0f cm")) Changed();
 			if (precise::SliderFloat(TR("ConvHeight", "Height"), &g.height, -100.0f, 150.0f, "%.0f cm")) Changed();
 			if (precise::SliderFloat(TR("ConvDistance", "Distance"), &g.distance, -300.0f, 600.0f, "%.0f cm")) Changed();
+			if (precise::SliderFloat(TR("ConvFov", "Zoom (field of view)"), &g.fov, -40.0f, 40.0f, "%+.0f degrees")) Changed();
 			ImGui::EndDisabled();
 			ImGui::SeparatorText(TR("SectionConvView", "View"));
 			if (Switch(TR("ConvFirstPerson", "First person in conversations"), &s.conversationFirstPerson)) Changed();

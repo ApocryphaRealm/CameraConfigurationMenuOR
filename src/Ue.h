@@ -49,6 +49,11 @@ namespace ue
 		return a_base && a_offset >= 0 ? reinterpret_cast<T*>(static_cast<std::uint8_t*>(a_base) + a_offset) : nullptr;
 	}
 
+	// ProcessEvent under a structured-exception guard: false when the engine faulted inside the call - a world-context
+	// call whose world a quit or a load tore down (Minimap Menu's crash on quitting, 2026-09-30 01:49:42; gate rule
+	// or-world-context-calls-are-guarded)
+	bool GuardedProcessEvent(UE::UObject* a_obj, UE::UFunction* a_fn, void* a_params);
+
 	// A reflected call: parameters by name, laid out from the UFunction's own properties (Tween Menu's ue::Call).
 	class Call
 	{
@@ -96,6 +101,9 @@ namespace ue
 			m_obj->ProcessEvent(m_fn, m_params.data());
 			return true;
 		}
+
+		// for a call that takes a world-context object: fault-guarded
+		bool RunGuarded() { return m_fn && m_obj && GuardedProcessEvent(m_obj, m_fn, m_params.data()); }
 
 	private:
 		UE::UObject*              m_obj;

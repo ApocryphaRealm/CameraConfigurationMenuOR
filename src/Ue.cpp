@@ -155,6 +155,16 @@ namespace ue
 		return out;
 	}
 
+	bool GuardedProcessEvent(UE::UObject* a_obj, UE::UFunction* a_fn, void* a_params)
+	{
+		__try {
+			a_obj->ProcessEvent(a_fn, a_params);
+			return true;
+		} __except (EXCEPTION_EXECUTE_HANDLER) {
+			return false;
+		}
+	}
+
 	bool Getter::Resolve(UE::UObject* a_obj)
 	{
 		auto* cls = a_obj ? a_obj->GetClass() : nullptr;

@@ -93,7 +93,7 @@ namespace marker
 			c.Set("WorldContextObject", pc);
 			c.Set("WidgetType", cls);
 			c.Set("OwningPlayer", pc);
-			c.Run();
+			if (!c.RunGuarded()) return nullptr;   // a world-context call: fault-guarded (a quit, a load)
 			return c.Get<UE::UObject*>("ReturnValue");
 		}
 

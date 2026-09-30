@@ -23,6 +23,15 @@ name Camera Configuration Menu. Plan: 4. plans\Camera Configuration Menu (CCM)\P
     arm frozen (no inherited rotation, absolute rotation). The arm is put back when the conversation ends.
   The Status page shows which body and socket were found.
 
+### Round 10 (the owner's report, 2026-09-30)
+- **Fixed: the conversation lock sometimes aimed at the player's own head** (the owner: "the conversation camera does
+  definitely track the target properly now, but depending on the distance I am away from them ... it messes the
+  character body up" - screenshots 01:30, the player's own arm, bow and quiver cut across the view).
+  - Cause: the speaker's body was matched by the form ID in a pawn's TESRefComponent, which never matched. Every
+    conversation fell back to "the nearest body (88 cm from the speaker)", often the player's own body.
+  - Fix: the speaker's body now comes from the game's own pairing (every reference is an IVPairableItem whose pairing
+    entry holds its Unreal actor). The fallback is the nearest pawn within 60 cm, never the player's body.
+
 ### Round 9 (2026-09-30) - from the primary session's TestBench captures while aiming and in dialogue
 - **Fixed: the Aiming a bow position did nothing.** Two captures (00:58 sneaking, 01:00 standing) showed the aiming
   states re-read their row of the game's camera table every frame. CCM's values landed in CurrentCameraSettingData, but

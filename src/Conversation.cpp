@@ -164,32 +164,40 @@ namespace conversation
 				g_pawnMatch = pawnClass ? "no speaker" : "the paired pawn class is not loaded";
 				return;
 			}
-			UE::FVector want{};
-			const bool haveWant = aim::ToUnreal(a_ref->data.location, want);
-			UE::UObject* byId = nullptr;
+			// The speaker's own body, through the game's pairing: every reference is an IVPairableItem whose pairing entry holds
+			// its Unreal actor (hostItem). The form ID in a pawn's TESRefComponent never matched (every conversation fell to
+			// "the nearest body, 88 cm from the speaker" - often the PLAYER'S own body, so the lock aimed at the player's
+			// head and the owner saw his own body cut across the view up close, 2026-09-30).
+			UE::UObject* paired = nullptr;
+			if (auto* entry = static_cast<RE::IVPairableItem*>(a_ref)->pairingEntry; entry && entry->isPaired && entry->hostItem && ue::IsLive(entry->hostItem)) {
+				paired = entry->hostItem;
+			}
+			// else the nearest paired pawn within 60 cm of the speaker's own position - never the player's body
 			UE::UObject* nearest = nullptr;
-			double       best = 300.0;
-			for (auto* p : ue::AllOf(pawnClass)) {
-				if (auto* comp = GetObject(p, Find(p, "TESRefComponent"))) {
-					if (reinterpret_cast<UE::UVTESObjectRefComponent*>(comp)->formIDInstance == a_ref->GetFormID()) {
-						byId = p;
-						break;
-					}
+			double       best = 60.0;
+			if (!paired) {
+				UE::UObject* playerPawn = nullptr;
+				if (auto* pr = RE::PlayerCharacter::GetSingleton()) {
+					if (auto* pe = static_cast<RE::IVPairableItem*>(pr)->pairingEntry; pe && pe->hostItem && ue::IsLive(pe->hostItem)) playerPawn = pe->hostItem;
 				}
-				if (haveWant) {
+				UE::FVector want{};
+				if (aim::ToUnreal(a_ref->data.location, want)) {
 					static ue::Getter location(L"K2_GetActorLocation");
-					std::array<double, 3> at{};
-					if (location.Get(p, at)) {
-						const double d = std::hypot(at[0] - want.x, at[1] - want.y, at[2] - want.z);
-						if (d < best) {
-							best = d;
-							nearest = p;
+					for (auto* p : ue::AllOf(pawnClass)) {
+						if (p == playerPawn) continue;
+						std::array<double, 3> at{};
+						if (location.Get(p, at)) {
+							const double d = std::hypot(at[0] - want.x, at[1] - want.y, at[2] - want.z);
+							if (d < best) {
+								best = d;
+								nearest = p;
+							}
 						}
 					}
 				}
 			}
-			auto* pawn = byId ? byId : nearest;
-			g_pawnMatch = byId ? "by its form ID" : nearest ? std::format("the nearest body ({:.0f} cm from the speaker)", best) : "no body found";
+			auto* pawn = paired ? paired : nearest;
+			g_pawnMatch = paired ? "its own (the game's pairing)" : nearest ? std::format("the nearest body ({:.0f} cm from the speaker)", best) : "no body found - the Oblivion head position is used";
 			if (!pawn) return;
 			g_pawn.Set(pawn);
 			auto* mesh = GetObject(pawn, Find(pawn, "MainSkeletalMeshComponent"));

@@ -3,7 +3,9 @@
 #include <imgui.h>
 
 #include "AMF.h"
+#include "PreciseSlider.h"
 #include "Crosshair.h"
+#include "Conversation.h"
 #include "Framing.h"
 #include "Game.h"
 #include "Selection.h"
@@ -91,9 +93,9 @@ namespace page
 
 			ImGui::SeparatorText(TR("SectionFacing", "Turning to face the camera"));
 			ImGui::BeginDisabled(s.cameraStyle != 1);
-			if (ImGui::SliderFloat(TR("BlockTurn", "After a block (seconds)"), &s.blockTurnSeconds, 0.0f, 3.0f, "%.2f")) Changed();
-			if (ImGui::SliderFloat(TR("SpellTurn", "After a spell (seconds)"), &s.spellTurnSeconds, 0.0f, 3.0f, "%.2f")) Changed();
-			if (ImGui::SliderFloat(TR("AttackTurn", "After an attack or bow shot (seconds)"), &s.attackTurnSeconds, 0.0f, 3.0f, "%.2f")) Changed();
+			if (precise::SliderFloat(TR("BlockTurn", "After a block (seconds)"), &s.blockTurnSeconds, 0.0f, 3.0f, "%.2f")) Changed();
+			if (precise::SliderFloat(TR("SpellTurn", "After a spell (seconds)"), &s.spellTurnSeconds, 0.0f, 3.0f, "%.2f")) Changed();
+			if (precise::SliderFloat(TR("AttackTurn", "After an attack or bow shot (seconds)"), &s.attackTurnSeconds, 0.0f, 3.0f, "%.2f")) Changed();
 			if (Switch(TR("FaceWhileHeld", "Keep facing while block or attack is held"), &s.faceWhileHeld)) Changed();
 			ImGui::EndDisabled();
 			ImGui::BeginDisabled(s.cameraStyle == 0);
@@ -116,7 +118,7 @@ namespace page
 		// a smoothing slider whose left end (-1) means the game's own value
 		bool GameSlider(const char* a_label, float* a_v, float a_max, const char* a_fmt)
 		{
-			return ImGui::SliderFloat(a_label, a_v, -1.0f, a_max, *a_v < 0.0f ? TR("GameValue", "the game's") : a_fmt);
+			return precise::SliderFloat(a_label, a_v, -1.0f, a_max, *a_v < 0.0f ? TR("GameValue", "the game's") : a_fmt);
 		}
 
 		// Framing and smoothing (plan 7.2 / 7.3 - the SmoothCam settings surface, SMOOTHCAM-SETTINGS.md)
@@ -141,9 +143,9 @@ namespace page
 				Changed();
 			}
 			ImGui::BeginDisabled(s_edit != 0 && !g.own);
-			if (ImGui::SliderFloat(TR("Side", "Over the shoulder (side)"), &g.side, -150.0f, 150.0f, "%.0f cm")) Changed();
-			if (ImGui::SliderFloat(TR("Height", "Height"), &g.height, -100.0f, 150.0f, "%.0f cm")) Changed();
-			if (ImGui::SliderFloat(TR("Distance", "Distance behind"), &g.distance, -300.0f, 600.0f, "%.0f cm")) Changed();
+			if (precise::SliderFloat(TR("Side", "Over the shoulder (side)"), &g.side, -150.0f, 150.0f, "%.0f cm")) Changed();
+			if (precise::SliderFloat(TR("Height", "Height"), &g.height, -100.0f, 150.0f, "%.0f cm")) Changed();
+			if (precise::SliderFloat(TR("Distance", "Distance behind"), &g.distance, -300.0f, 600.0f, "%.0f cm")) Changed();
 			ImGui::EndDisabled();
 			if (s_edit != 0 && ImGui::Button(TR("GroupCopy", "Copy Standing's position here"))) {
 				g.side = s.fmGroups[0].side, g.height = s.fmGroups[0].height, g.distance = s.fmGroups[0].distance;
@@ -166,7 +168,7 @@ namespace page
 			};
 			ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.6f);
 			if (ImGui::Combo(TR("OffsetEasing", "Curve"), &s.smOffsetEasing, curves, framing::kEasingCount)) Changed();
-			if (ImGui::SliderFloat(TR("OffsetSeconds", "Slide time (seconds)"), &s.smOffsetSeconds, 0.0f, 5.0f, "%.2f")) Changed();
+			if (precise::SliderFloat(TR("OffsetSeconds", "Slide time (seconds)"), &s.smOffsetSeconds, 0.0f, 5.0f, "%.2f")) Changed();
 			ImGui::EndDisabled();
 
 			ImGui::SeparatorText(TR("SectionSmoothing", "Smoothing"));
@@ -214,13 +216,21 @@ namespace page
 			Hint(TR("ConvIntro", "The camera while you talk to someone. The game's conversation camera is the base; these values are added to it."));
 			const bool now = framing::Current() == framing::Group::kConversation;
 			ImGui::Text("%s %s", TR("ConvNow", "In a conversation now:"), now ? TR("Yes", "yes") : TR("No", "no"));
+			ImGui::TextDisabled("%s", conversation::State().value("status", std::string{}).c_str());
 			ImGui::Spacing();
 			auto& g = s.fmGroups[static_cast<std::size_t>(framing::Group::kConversation)];
 			if (Switch(TR("ConvOwn", "Its own camera position in conversations (otherwise Standing's)"), &g.own)) Changed();
 			ImGui::BeginDisabled(!g.own);
-			if (ImGui::SliderFloat(TR("ConvSide", "Over the shoulder (side)"), &g.side, -150.0f, 150.0f, "%.0f cm")) Changed();
-			if (ImGui::SliderFloat(TR("ConvHeight", "Height"), &g.height, -100.0f, 150.0f, "%.0f cm")) Changed();
-			if (ImGui::SliderFloat(TR("ConvDistance", "Distance"), &g.distance, -300.0f, 600.0f, "%.0f cm")) Changed();
+			if (precise::SliderFloat(TR("ConvSide", "Over the shoulder (side)"), &g.side, -150.0f, 150.0f, "%.0f cm")) Changed();
+			if (precise::SliderFloat(TR("ConvHeight", "Height"), &g.height, -100.0f, 150.0f, "%.0f cm")) Changed();
+			if (precise::SliderFloat(TR("ConvDistance", "Distance"), &g.distance, -300.0f, 600.0f, "%.0f cm")) Changed();
+			ImGui::EndDisabled();
+			ImGui::SeparatorText(TR("SectionConvView", "View"));
+			if (Switch(TR("ConvFirstPerson", "First person in conversations"), &s.conversationFirstPerson)) Changed();
+			Hint(TR("ConvFirstPersonHint", "The view changes to first person when a conversation starts and back to the one you had when it ends."));
+			ImGui::BeginDisabled(s.conversationFirstPerson);
+			if (Switch(TR("ConvLock", "Keep the camera on the person I talk to"), &s.conversationLockOnSpeaker)) Changed();
+			Hint(TR("ConvLockHint", "However far the camera is moved over the shoulder, it stays aimed at the person you are talking to (the one you activated)."));
 			ImGui::EndDisabled();
 			ImGui::SeparatorText(TR("SectionConvCamera", "Free camera"));
 			if (Switch(TR("ConvStandDown", "The game's own camera behaviour in conversations"), &s.standDownInDialogue)) Changed();
@@ -240,10 +250,10 @@ namespace page
 			if (Switch(TR("SelMarker", "Show what will be used, where it is"), &s.selShowMarker)) Changed();
 			ImGui::SeparatorText(TR("SelArea", "Area"));
 			ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.6f);
-			if (ImGui::SliderFloat(TR("SelRange", "Reach"), &s.selRange, 50.0f, 400.0f, "%.0f")) Changed();
+			if (precise::SliderFloat(TR("SelRange", "Reach"), &s.selRange, 50.0f, 400.0f, "%.0f")) Changed();
 			Hint(TR("SelRangeHint", "How far from your character, in game units (about 70 units to a metre)."));
 			ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.6f);
-			if (ImGui::SliderFloat(TR("SelAngle", "Angle"), &s.selMaxAngle, 5.0f, 75.0f, "%.0f")) Changed();
+			if (precise::SliderFloat(TR("SelAngle", "Angle"), &s.selMaxAngle, 5.0f, 75.0f, "%.0f")) Changed();
 			Hint(TR("SelAngleHint", "How far to either side of where the camera looks, in degrees."));
 			ImGui::Spacing();
 			ImGui::Separator();
@@ -278,7 +288,7 @@ namespace page
 			if (Switch(TR("XhWhenWeapon", "While a weapon is drawn"), &s.xhWhenWeaponDrawn)) Changed();
 			if (Switch(TR("XhFirstPerson", "Always in first person"), &s.xhInFirstPerson)) Changed();
 			ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.6f);
-			if (ImGui::SliderFloat(TR("XhFade", "Fade (seconds)"), &s.xhFadeSeconds, 0.0f, 2.0f, "%.2f")) Changed();
+			if (precise::SliderFloat(TR("XhFade", "Fade (seconds)"), &s.xhFadeSeconds, 0.0f, 2.0f, "%.2f")) Changed();
 			ImGui::EndDisabled();
 			SaveIfSettled();
 		}

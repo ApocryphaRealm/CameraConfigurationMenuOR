@@ -1,6 +1,7 @@
 #include "Game.h"
 
 #include "Compass.h"
+#include "Conversation.h"
 #include "Framing.h"
 #include "Shake.h"
 #include "PEHook.h"
@@ -327,6 +328,7 @@ namespace game
 				.shoulderLeft = g_shoulderLeft, .dt = dt });
 			// the compass follows the camera while the free camera is on in third person (UCR's CompassBridge does the same)
 			compass::Update(o.ctrl, s.enabled && styleFree && !firstPerson && s.compassFollowsCamera && o.arm && o.move);
+			conversation::Tick(o.ctrl, o.mgr, tag);   // first person in conversations, and the aim held on the speaker
 
 			// [General] bVanityCamera = 0: the idle camera that circles the player never starts - the camera manager's
 			// vanity timer is stopped (once a second, not every frame: input restarts it), and a vanity camera already

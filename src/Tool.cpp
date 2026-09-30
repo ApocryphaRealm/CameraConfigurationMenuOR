@@ -5,6 +5,7 @@
 #include "Activate.h"
 #include "Aim.h"
 #include "Compass.h"
+#include "Conversation.h"
 #include "Crosshair.h"
 #include "Framing.h"
 #include "Shake.h"
@@ -38,7 +39,7 @@ namespace tool
 				{ "events", { { "block", s.blockEvents }, { "attack", s.attackEvents }, { "cast", s.castEvents } } },
 				{ "problem", s.problem }, { "settings", settings::GetAll() },
 				{ "selection", selection::State() }, { "aim", aim::State() }, { "activate", activate::State() }, { "marker", marker::State() },
-				{ "crosshair", crosshair::State() }, { "compass", compass::State() }, { "framing", framing::State() }, { "sprint_shake", shake::State() } };
+				{ "crosshair", crosshair::State() }, { "compass", compass::State() }, { "framing", framing::State() }, { "sprint_shake", shake::State() }, { "conversation", conversation::State() } };
 		}
 
 		void Write(void* a_sink, TestBenchAPI::WriteFn a_write, const json& a_j) { a_write(a_sink, a_j.dump().c_str()); }

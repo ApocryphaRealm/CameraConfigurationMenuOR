@@ -70,6 +70,22 @@ name Camera Configuration Menu. Plan: 4. plans\Camera Configuration Menu (CCM)\P
 - The smoothing sliders write the spring arm (CameraLagSpeed, CameraLagMaxDistance, CameraRotationLagSpeedPitch / Yaw):
   the setting data's own lag fields read 0 in game.
 
+### Added (conversation view and aim; precise sliders)
+- First person in conversations ([Framing.Conversation] bFirstPerson, off by default; the owner: "a toggle for the
+  conversation camera tab that lets you automatically go to first person in conversation. And then back to third person
+  when leaving conversation"): the controller's own SwitchPOV(FirstPerson) when a conversation starts, and the view the
+  player had put back when gameplay resumes (a conversation ends with the menu, not with the camera state - first person
+  has one of its own).
+- The camera kept on the person spoken to ([Framing.Conversation] bLockOnSpeaker, on by default; the owner: "locks the
+  camera to the NPC that you're talking to so that the offset doesn't have you looking away from the NPC the further out
+  you go"): the speaker is the reference the player activated to start the conversation (InterfaceManager.activateRef,
+  or crosshairRef, remembered through gameplay); each tick of the conversation the controller is aimed from the camera's
+  own place at the speaker's head (SetControlRotation). A conversation not started by activating someone keeps the
+  game's aim. ccm.status "conversation" reports the speaker and how often the game's own aim replaced ours.
+- Precise sliders everywhere on CCM's pages (include/PreciseSlider.h, shared with Minimap Menu): a keyboard or D-pad nudge
+  moves exactly one unit of the last digit shown - the conversation's over-the-shoulder slider had stepped 3 cm (the
+  owner: "all of our sliders are precise sliders and they don't jump more than one numerical unit per D-pad nudge").
+
 ### Added (vanity camera off)
 - The idle vanity camera can be switched off (the owner, 2026-09-29: "I want a setting in CCM to disable the vanity
   camera that activates whenever you time out from inactivity"). [General] bVanityCamera had been declared but never

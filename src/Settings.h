@@ -28,6 +28,8 @@ namespace settings
 		bool        compassFollowsCamera = true;
 		bool        freeCameraOnHorse = false;
 		bool        standDownInDialogue = true;
+		bool        conversationFirstPerson = false;   // first person while a conversation runs, the previous view after
+		bool        conversationLockOnSpeaker = true;  // the camera aims at the person spoken to, whatever offset CCM adds
 		bool        standDownSitting = true;
 		bool        vanityCamera = true;
 

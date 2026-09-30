@@ -29,7 +29,7 @@ namespace settings
 			CCM_ROW("General", "bFreeCameraOnHorse", kBool, freeCameraOnHorse, 0, 0, 1, "1 = the free camera also on horseback."),
 			CCM_ROW("General", "bStandDownInDialogue", kBool, standDownInDialogue, 1, 0, 1, "1 = the game's own camera during dialogue."),
 			CCM_ROW("General", "bStandDownSitting", kBool, standDownSitting, 1, 0, 1, "1 = the game's own camera while sitting or using furniture."),
-			CCM_ROW("General", "bVanityCamera", kBool, vanityCamera, 1, 0, 1, "1 = the game's idle camera that circles the player is left on."),
+			CCM_ROW("General", "bVanityCamera", kBool, vanityCamera, 1, 0, 1, "1 = the game's idle camera that circles the player after a while without input; 0 = it never starts."),
 			CCM_ROW("Keys", "iShoulderSwapKey", kInt, shoulderSwapKey, 26, 0, 255, "Keyboard keys are DirectInput scan codes, 0 = none. 26 = [: move the camera to the other shoulder."),
 			CCM_ROW("Keys", "iCycleStyleKey", kInt, cycleStyleKey, 27, 0, 255, "27 = ]: switch between the two free camera styles."),
 			CCM_ROW("Keys", "iToggleKey", kInt, toggleKey, 0, 0, 255, "Turn CCM on and off."),

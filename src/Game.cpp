@@ -328,6 +328,42 @@ namespace game
 			// the compass follows the camera while the free camera is on in third person (UCR's CompassBridge does the same)
 			compass::Update(o.ctrl, s.enabled && styleFree && !firstPerson && s.compassFollowsCamera && o.arm && o.move);
 
+			// [General] bVanityCamera = 0: the idle camera that circles the player never starts - the camera manager's
+			// vanity timer is stopped (once a second, not every frame: input restarts it), and a vanity camera already
+			// running is left. Turned back on, the game's timer is set again.
+			{
+				static ULONGLONG s_nextVanity = 0;
+				static bool      s_stopped = false;
+				const ULONGLONG  nowMs = GetTickCount64();
+				const bool       block = s.enabled && !s.vanityCamera;
+				if (o.mgr && nowMs >= s_nextVanity) {
+					s_nextVanity = nowMs + 1000;
+					if (block) {
+						ue::Call stop(o.mgr, L"StopVanityCameraTimer");
+						if (stop && stop.Run() && !s_stopped) {
+							s_stopped = true;
+							logger::info("vanity camera: off - the idle timer is kept stopped");
+						}
+					} else if (s_stopped) {
+						ue::Call set(o.mgr, L"SetVanityCameraTimer");
+						if (set) set.Run();
+						s_stopped = false;
+						logger::info("vanity camera: on again - the game's idle timer is set");
+					}
+				}
+				static bool s_exited = false;
+				if (block && o.ctrl && tag.find("Vanity") != std::string::npos) {
+					if (!s_exited) {
+						ue::Call exit(o.ctrl, L"ExitVanityCamera");
+						if (exit) exit.Run();
+						s_exited = true;
+						logger::info("vanity camera: it had started - left");
+					}
+				} else {
+					s_exited = false;
+				}
+			}
+
 			// the tick rate over one-second windows, for the Status page
 			++g_rateWindowTicks;
 			if (g_clock - g_rateWindowStart >= 1.0) {

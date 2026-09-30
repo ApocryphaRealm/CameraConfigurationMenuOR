@@ -70,6 +70,14 @@ name Camera Configuration Menu. Plan: 4. plans\Camera Configuration Menu (CCM)\P
 - The smoothing sliders write the spring arm (CameraLagSpeed, CameraLagMaxDistance, CameraRotationLagSpeedPitch / Yaw):
   the setting data's own lag fields read 0 in game.
 
+### Added (vanity camera off)
+- The idle vanity camera can be switched off (the owner, 2026-09-29: "I want a setting in CCM to disable the vanity
+  camera that activates whenever you time out from inactivity"). [General] bVanityCamera had been declared but never
+  read; now 0 keeps the camera manager's vanity timer stopped (StopVanityCameraTimer, re-applied once a second because
+  input restarts it) and leaves a vanity camera that had already started (the controller's ExitVanityCamera); turned
+  back on, the game's timer is set again (SetVanityCameraTimer). A switch on the Camera page: "The idle camera that
+  circles you".
+
 ### Added (conversation camera)
 - A Conversation tab (the owner, relayed 2026-09-29: "add to CCM a conversation camera tab"): a ninth framing context,
   Conversation, detected by the game's own camera state State.Camera.Dialogue (seen in CCM's log) and above every other

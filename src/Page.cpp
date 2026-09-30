@@ -100,6 +100,10 @@ namespace page
 			if (Switch(TR("FaceWhileLockedOn", "Face the camera while Ultimate Combat is locked on"), &s.faceWhileLockedOn)) Changed();
 			Hint(TR("FaceWhileLockedOnHint", "No free camera while a target is locked, so dodges go where you expect."));
 			ImGui::EndDisabled();
+			ImGui::BeginDisabled(false);
+			if (Switch(TR("VanityCamera", "The idle camera that circles you"), &s.vanityCamera)) Changed();
+			Hint(TR("VanityCameraHint", "Off: the camera never starts circling your character when you stand idle for a while."));
+			ImGui::EndDisabled();
 
 			ImGui::SeparatorText(TR("SectionKeys", "Keys"));
 			Hint(TR("KeysHint", "[ moves the camera to the other shoulder. ] switches between the two free camera styles."));

@@ -24,6 +24,15 @@ name Camera Configuration Menu. Plan: 4. plans\Camera Configuration Menu (CCM)\P
   The Status page shows which body and socket were found.
 
 ### Round 10 (the owner's report, 2026-09-30)
+- **Changed: "Move the conversation camera" holds the conversation in third person** (the owner: "the third person
+  conversation camera while standing closely to the NPC still destroys the player body").
+  - Cause: the game's conversation camera is first person (POV 0) and draws the player's body in its first-person form.
+    Moved away from the head, that form showed cut apart up close.
+  - Fix: with the switch on (and first person in conversations off), the controller is held with
+    ForceAndLockPOV(the view the player came in with) for the conversation, so the body is drawn whole. The Conversation
+    position then moves that third-person camera, and UnlockAndRestorePOV hands the view back when the conversation
+    ends.
+  - The "Aiming a bow" context works (the owner, the same launch).
 - **Changed: the Aiming a bow position is written into the live camera states, not a table.** The primary session found
   there is NO camera DataTable at run time. Each camera state of the camera manager's state machine keeps its camera in
   an ASP_CameraSettings_C object: 20 live ones, from Standing and Dialogue to Standing_Aiming and Sneaking_Zooming. The

@@ -1,6 +1,7 @@
 #include "Conversation.h"
 
 #include "Aim.h"
+#include "Framing.h"
 #include "Reflect.h"
 #include "Settings.h"
 #include "Ue.h"
@@ -25,6 +26,7 @@ namespace conversation
 		bool           g_in = false;
 		bool           g_switched = false;
 		bool           g_forced = false;           // the switch did not hold in the conversation: ForceAndLockPOV was used
+		bool           g_thirdForced = false;      // the conversation is held in third person (Move the conversation camera)
 		int            g_checkIn = 0;              // ticks until the switch is read back
 		std::uint8_t   g_previousPov = 1;          // EVPlayerPOVType: 0 first person, 1 third close, 2 third far
 		// The view the player had in GAMEPLAY, followed every tick outside a conversation. The game's own dialogue camera
@@ -355,11 +357,29 @@ namespace conversation
 			// off (Framing, noOffset), and the view comes back by itself when the conversation ends. SwitchPOV is not used.
 			g_previousPov = g_gameplayPov;
 			const bool fp = s.enabled && s.conversationFirstPerson;
+			// "Move the conversation camera" in third person: the conversation is held in the player's own third-person view.
+			// The game's conversation camera is first person (POV 0) and draws the player's body in its first-person form;
+			// moved away from the head, that form showed cut apart up close (the owner, 2026-09-30: "the third person
+			// conversation camera while standing closely to the NPC still destroys the player body"). ForceAndLockPOV
+			// with the view the player came in with; UnlockAndRestorePOV when the conversation ends.
+			const bool own = s.fmGroups[static_cast<std::size_t>(framing::Group::kConversation)].own;
+			g_thirdForced = false;
+			if (s.enabled && own && !fp && g_gameplayPov != 0) {
+				g_thirdForced = ForcePov(a_controller, g_gameplayPov);
+				logger::info("conversation: held in third person ({}) - {}", g_gameplayPov == 2 ? "far" : "close",
+					g_thirdForced ? "ForceAndLockPOV" : "the controller has no ForceAndLockPOV");
+			}
 			Status(std::format("in a conversation{}{}", g_speaker ? " with " + g_speakerName : " (no speaker known - the game's aim stands)",
-				fp ? "; first person (the game's own conversation view, nothing added)" : ""));
+				fp ? "; first person (the game's own conversation view, nothing added)" : g_thirdForced ? "; third person" : ""));
 		} else if (g_in && gameplay && !dialogue) {
 			g_in = false;
 			EndLock();
+			if (g_thirdForced) {
+				UnlockPov(a_controller);   // the game's own view handling back
+				SwitchPov(a_controller, g_previousPov);
+				logger::info("conversation: third person released (the view put back: {})", g_previousPov == 2 ? "far" : "close");
+				g_thirdForced = false;
+			}
 			if (g_switched) {
 				if (g_forced) {
 					UnlockPov(a_controller);   // the game's lock off, the view before it back

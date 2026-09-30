@@ -93,6 +93,11 @@ namespace framing
 			}
 		};
 		Framed g_sockY{ "sideways offset" }, g_sockZ{ "height" }, g_armLen{ "arm length" };
+
+		// [Zoom] bOwnDistances: the arm length's base is the player's close / far distance instead of the game's, eased
+		// towards on the offsets' slide time; back to the game's base the same way, then it follows the game's exactly
+		double g_zoomBase = 0.0;
+		bool   g_zoomInit = false, g_zoomOverriding = false;
 		std::string g_lastTag;
 
 		constexpr const char* kSocket = "CurrentCameraSettingData.DesiredSocketOffset";
@@ -312,11 +317,28 @@ namespace framing
 			g_socketWritten = true;
 		}
 
-		// ---- distance ----
+		// ---- distance: the game's base (or the player's own zoom distance) + the context's distance ----
+		const bool zoomOwn = a_enabled && s.ownZoomDistances && (a_in.pov == 1 || a_in.pov == 2) && !sig.aiming && group != Group::kConversation;
 		const auto& pa = Find(a_mgr, "CurrentCameraSettingData.DesiredArmLength");
 		if (pa.Ok()) {
 			const double cur = GetFloat(a_mgr, pa);
-			const double target = std::max(20.0, g_armLen.Target(cur, g_now[2], stateChanged));
+			// what CCM added on top of the game's base last tick, so the creep test compares against what was written
+			const double added = g_zoomOverriding ? g_zoomBase + g_now[2] - g_armLen.base : g_now[2];
+			g_armLen.Target(cur, added, stateChanged);
+			const double gameBase = g_armLen.base;
+			const double wantBase = zoomOwn ? static_cast<double>(a_in.pov == 1 ? s.zoomCloseDistance : s.zoomFarDistance) : gameBase;
+			if (!g_zoomInit) {
+				g_zoomBase = gameBase;
+				g_zoomInit = true;
+			}
+			if (zoomOwn) g_zoomOverriding = true;
+			if (g_zoomOverriding) {
+				const double zk = s.smEaseOffsets && s.smOffsetSeconds > 0.0f ? std::min(1.0, a_dt * 3.0 / s.smOffsetSeconds) : 1.0;
+				g_zoomBase += (wantBase - g_zoomBase) * zk;
+				if (!zoomOwn && std::abs(g_zoomBase - gameBase) < 1.0) g_zoomOverriding = false;   // back on the game's
+			}
+			if (!g_zoomOverriding) g_zoomBase = gameBase;
+			const double target = std::max(20.0, g_zoomBase + g_now[2]);
 			g_armLen.last = target;
 			if (std::abs(target - cur) > 0.001) SetFloat(a_mgr, pa, static_cast<float>(target));
 		}
@@ -336,6 +358,8 @@ namespace framing
 			{ "eased", { { "side", g_now[0] }, { "height", g_now[1] }, { "distance", g_now[2] }, { "mirror", g_now[3] }, { "progress", g_t } } },
 			{ "socket_base", g_socketBase }, { "socket_now", g_socketLast }, { "socket_rebases", g_sockY.rebases + g_sockZ.rebases },
 			{ "arm_base", g_armLen.base }, { "arm_now", g_armLen.last }, { "arm_rebases", g_armLen.rebases },
+			{ "zoom", { { "pov", a_in.pov == 1 ? "close" : a_in.pov == 2 ? "far" : a_in.pov == 0 ? "first person" : "unknown" }, { "own_distance", zoomOwn },
+				{ "base_now", g_zoomBase } } },
 			{ "held_bases", { { "side", g_sockY.frozen }, { "height", g_sockZ.frozen }, { "distance", g_armLen.frozen } } },
 			{ "follow_speed", { { "game", g_lag.base }, { "now", g_lag.last } } },
 			{ "max_lag_distance", { { "game", g_lagMax.base }, { "now", g_lagMax.last } } },

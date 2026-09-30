@@ -23,6 +23,20 @@ name Camera Configuration Menu. Plan: 4. plans\Camera Configuration Menu (CCM)\P
     arm frozen (no inherited rotation, absolute rotation). The arm is put back when the conversation ends.
   The Status page shows which body and socket were found.
 
+### Added (late on 2026-09-29) - the zoom
+- `[Zoom] bStartZoomedOut` (on by default): after loading a game, the view starts at the game's far third-person zoom
+  instead of the close one. The owner asked for this: "when you load into the game you're already fully zoomed out
+  instead of starting in third person but slightly zoomed out".
+  - A load gives the player a new pawn. One second into that pawn's first gameplay, a view at the close zoom is switched
+    with the controller's own `SwitchPOV(ThirdPersonFar)`, which also makes the far zoom the new default state.
+  - First person, or a view already at the far zoom, is left as it is.
+- `[Zoom] bOwnDistances`, `fCloseDistance` (170 cm) and `fFarDistance` (310 cm): the two zoom distances as precise
+  sliders (the owner: "sliders for both zoom settings to customize them to change between").
+  - They replace the game's own base arm length for the zoom in use; each context's Distance is still added on top.
+  - The camera eases to them over the offsets' slide time, and eases back when the switch is turned off.
+  - They don't apply while aiming a bow (the game's aim zoom) or in a conversation.
+  - They sit in a Zoom section on the Framing page, which also shows the zoom in use now and its distance.
+
 ### Added (later the same day)
 - `[Framing.Conversation] bFirstPersonNoOffset` (on by default): with first person in conversations turned on, the
   Conversation offset is not added while the view is first person, so it looks straight at the speaker (the owner: "the

@@ -153,6 +153,23 @@ namespace page
 			}
 			Hint(TR("ShoulderHint", "[ moves the camera to the other shoulder; the side value mirrors with it."));
 
+			// the game's two third-person zooms (the owner, 2026-09-29)
+			ImGui::SeparatorText(TR("SectionZoom", "Zoom"));
+			if (Switch(TR("StartZoomedOut", "Start zoomed out"), &s.startZoomedOut)) Changed();
+			Hint(TR("StartZoomedOutHint", "After loading a game the camera starts at the far zoom instead of the close one. First person is left as it is."));
+			if (Switch(TR("OwnZoom", "Set the zoom distances myself"), &s.ownZoomDistances)) Changed();
+			Hint(TR("OwnZoomHint", "The two distances below replace the game's own close and far zoom. Not while aiming a bow or in a conversation. Each context's distance is still added."));
+			ImGui::BeginDisabled(!s.ownZoomDistances);
+			if (precise::SliderFloat(TR("ZoomClose", "Close zoom"), &s.zoomCloseDistance, 50.0f, 800.0f, "%.0f cm")) Changed();
+			if (precise::SliderFloat(TR("ZoomFar", "Far zoom"), &s.zoomFarDistance, 50.0f, 1200.0f, "%.0f cm")) Changed();
+			ImGui::EndDisabled();
+			{
+				const auto z = framing::State().value("zoom", json::object());
+				const auto pov = z.value("pov", std::string("unknown"));
+				ImGui::TextDisabled(TR("ZoomNow", "Now: %s, %.0f cm"), pov == "close" ? TR("ZoomNowClose", "close zoom") : pov == "far" ? TR("ZoomNowFar", "far zoom") : pov == "first person" ? TR("ZoomNowFirst", "first person") : TR("ZoomNowUnknown", "not known yet"),
+					z.value("base_now", 0.0));
+			}
+
 			ImGui::SeparatorText(TR("SectionSlide", "Moving to a new position"));
 			if (Switch(TR("EaseOffsets", "Slide instead of cutting"), &s.smEaseOffsets)) Changed();
 			ImGui::BeginDisabled(!s.smEaseOffsets);
@@ -187,6 +204,7 @@ namespace page
 				std::ranges::copy(d.fmGroups, s.fmGroups);
 				s.smFollowSpeed = d.smFollowSpeed; s.smMaxLagDistance = d.smMaxLagDistance; s.smRotationPitch = d.smRotationPitch;
 				s.smRotationYaw = d.smRotationYaw; s.smStateBlendSeconds = d.smStateBlendSeconds;
+				s.ownZoomDistances = d.ownZoomDistances; s.zoomCloseDistance = d.zoomCloseDistance; s.zoomFarDistance = d.zoomFarDistance;
 				Changed();
 			}
 			SaveIfSettled();

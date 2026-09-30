@@ -34,6 +34,13 @@ namespace settings
 		bool        standDownSitting = true;
 		bool        vanityCamera = true;
 
+		// [Zoom] - the game's two third-person zooms, EVPlayerPOVType ThirdPersonClose (1) and ThirdPersonFar (2) (the owner,
+		// 2026-09-29: "when you load into the game you're already fully zoomed out ... sliders for both zoom settings")
+		bool        startZoomedOut = true;      // after a load, the far zoom instead of the close one
+		bool        ownZoomDistances = false;   // the two distances below replace the game's own
+		float       zoomCloseDistance = 170.0f; // cm behind the character (the game's close zoom read 170 with a weapon drawn, probe P2)
+		float       zoomFarDistance = 310.0f;   // cm (the game's far zoom read 310)
+
 		// [Keys] - DirectInput scan codes / XInput masks, 0 = unbound (plan 7.4, .MD\DEFAULT-KEYS.md)
 		std::int32_t shoulderSwapKey = 0x1A;   // [ - K and L went to Minimap Menu (the owner, 2026-09-29: "we haven't even released CCM, so we can change its camera shoulder keys")
 		std::int32_t cycleStyleKey = 0x1B;     // ]

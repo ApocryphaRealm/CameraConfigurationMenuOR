@@ -52,6 +52,7 @@ namespace framing
 		bool         shoulderLeft = false;
 		double       dt = 0.0;
 		bool         noOffset = false;     // the game's own position, no offset (first person in a conversation)
+		int          pov = -1;             // the controller's POV: 0 first person, 1 close, 2 far, -1 unknown
 	};
 
 	// game thread, every camera tick

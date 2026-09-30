@@ -230,6 +230,61 @@ namespace game
 			return s_locked;
 		}
 
+		// the controller's point of view (EVPlayerPOVType: 0 first person, 1 third person close, 2 far), -1 unknown
+		int ReadPov(UE::UObject* a_ctrl)
+		{
+			auto* cls = a_ctrl ? a_ctrl->GetClass() : nullptr;
+			static UE::UClass*  s_class = nullptr;
+			static std::int32_t s_off = -1;
+			if (cls != s_class) {
+				s_class = cls;
+				s_off = cls ? ue::Offset(cls, "POV") : -1;
+			}
+			auto* p = s_off >= 0 ? ue::At<std::uint8_t>(a_ctrl, s_off) : nullptr;
+			return p ? *p : -1;
+		}
+
+		// [Zoom] bStartZoomedOut (the owner, 2026-09-29: "when you load into the game you're already fully zoomed out instead
+		// of starting in third person but slightly zoomed out"). A loaded game has a new player pawn; one second into its
+		// first gameplay, a view at the close zoom is switched to the far one through the controller's own SwitchPOV (the
+		// new default state too). First person, or a view already far, is left as it is. Once per pawn.
+		void StartZoomedOut(UE::UObject* a_pawn, UE::UObject* a_ctrl, const settings::Values& a_s)
+		{
+			static ue::Handle s_pawn;
+			static bool       s_armed = false;
+			static ULONGLONG  s_since = 0;
+			if (s_pawn.Get() != a_pawn) {
+				s_pawn.Set(a_pawn);
+				s_armed = true;
+				s_since = 0;
+			}
+			if (!s_armed || !a_ctrl) return;
+			auto* im = RE::InterfaceManager::GetInstance(false, false);
+			if (!im || im->menuMode != 1) {
+				s_since = 0;   // the second counts from gameplay, not from a loading screen or a menu
+				return;
+			}
+			const ULONGLONG now = GetTickCount64();
+			if (!s_since) s_since = now;
+			if (now - s_since < 1000) return;
+			s_armed = false;
+			if (!a_s.enabled || !a_s.startZoomedOut) return;
+			const int pov = ReadPov(a_ctrl);
+			if (pov != 1) {
+				logger::info("zoom: a new game view ({}) - left as it is", pov == 0 ? "first person" : pov == 2 ? "already the far zoom" : "point of view unknown");
+				return;
+			}
+			ue::Call c(a_ctrl, L"SwitchPOV");
+			if (!c) {
+				logger::warn("zoom: the controller has no SwitchPOV - the far zoom cannot be set");
+				return;
+			}
+			c.Set("TargetPOV", static_cast<std::uint8_t>(2));
+			c.Set("bSetToNewDefaultState", true);
+			c.Run();
+			logger::info("zoom: a new game view at the close zoom - switched to the far zoom (now {})", ReadPov(a_ctrl));
+		}
+
 		void OnPlayerTick(UE::UObject* a_pawn)
 		{
 			const auto t0 = Clock::now();
@@ -322,13 +377,15 @@ namespace game
 				}
 				g_wroteSwitches = true;
 			}
+			StartZoomedOut(a_pawn, o.ctrl, s);
 			shake::Update(s.enabled && !s.smSprintShake);   // "Screen shake while sprinting" off = the sprint shakes silenced
 			// offsets per context, shoulder swap and smoothing
 			framing::Apply({ .manager = o.mgr, .pawn = a_pawn, .movement = o.move, .arm = o.arm, .cameraTag = tag, .weaponDrawn = combat, .enabled = s.enabled,
 				.shoulderLeft = g_shoulderLeft, .dt = dt,
 				// first person in a conversation looks straight at the speaker: no Conversation offset (the owner, 2026-09-29)
 				.noOffset = s.enabled && s.conversationFirstPersonNoOffset && tag.find("Dialogue") != std::string::npos &&
-			                (firstPerson || conversation::FirstPersonNow()) });
+			                (firstPerson || conversation::FirstPersonNow()),
+				.pov = ReadPov(o.ctrl) });
 			// the compass follows the camera while the free camera is on in third person (UCR's CompassBridge does the same)
 			compass::Update(o.ctrl, s.enabled && styleFree && !firstPerson && s.compassFollowsCamera && o.arm && o.move);
 			conversation::Tick(o.ctrl, o.mgr, o.arm, tag);   // first person in conversations, and the aim held on the speaker

@@ -179,7 +179,10 @@ namespace crosshair
 			g_lastCasts = g.castEvents;
 			g_aimUntil = now + static_cast<ULONGLONG>(std::max(0.2f, s.spellTurnSeconds) * 1000.0f);
 		}
-		const bool bow = g.cameraTag.find("DrawingWeapon") != std::string::npos || g.cameraTag.find("Aim") != std::string::npos;
+		// the same signal as the framing's "Aiming a bow": a bow fully drawn is the camera's *_Zooming state, which the old
+		// "Aim" test missed (the owner, 2026-09-30: "I can't see my contextual crosshair ... set to turn on with a bow drawn")
+		const bool bow = g.cameraTag.find("DrawingWeapon") != std::string::npos || g.cameraTag.find("Aim") != std::string::npos ||
+		                 g.cameraTag.find("Zooming") != std::string::npos;
 		const bool aiming = bow || now < g_aimUntil;
 		const bool target = im->activateRef != nullptr;
 		const bool firstPerson = !player->is3rdPerson;
@@ -198,7 +201,11 @@ namespace crosshair
 		}
 
 		if (!g_controlling) {
-			g_gameOpacity = std::max(Opacity(img), 0.01f) >= 0.99f ? 1.0f : Opacity(img);   // what the game had, put back on release
+			// what the game had, put back on release - and what "shown" means. Taken while the HUD is still fading in (a load)
+			// it read 0, and "shown" was then invisible for the whole session: a near-zero reading counts as fully shown.
+			const float had = Opacity(img);
+			g_gameOpacity = had > 0.05f && had < 0.99f ? had : 1.0f;
+			logger::info("crosshair: taking control (the game had opacity {:.2f}; shown means {:.2f})", had, g_gameOpacity);
 			g_now = Opacity(img);
 			g_controlling = true;
 		}
@@ -212,7 +219,7 @@ namespace crosshair
 		}
 		std::scoped_lock l(g_lock);
 		if (g_why != why) {
-			logger::debug("crosshair: {} ({})", show ? "shown" : "hidden", why);
+			logger::info("crosshair: {} ({}; camera state {})", show ? "shown" : "hidden", why, g.cameraTag.empty() ? "none" : g.cameraTag);
 		}
 		g_why = why;
 		g_target = target01;

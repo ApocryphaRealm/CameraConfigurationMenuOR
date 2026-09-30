@@ -23,6 +23,16 @@ name Camera Configuration Menu. Plan: 4. plans\Camera Configuration Menu (CCM)\P
     arm frozen (no inherited rotation, absolute rotation). The arm is put back when the conversation ends.
   The Status page shows which body and socket were found.
 
+### Round 11 (the owner's report, 2026-09-30)
+- **Fixed: the contextual crosshair never showed while aiming** (the owner: "I can't see my contextual crosshair at the
+  moment. Even though it's set to turn on with a bow drawn for aiming"). Two causes, both closed:
+  - What "shown" means was the crosshair's opacity when the mod took control. Taken while the HUD was still fading in
+    after a load, it read 0, and "shown" stayed invisible all session (the log's only crosshair line was the find,
+    early in the load). A reading below 0.05 now counts as fully shown, and taking control is logged with both values.
+  - The crosshair's bow test missed the fully drawn bow's *_Zooming camera state; it now uses the same signal as the
+    framing's "Aiming a bow" (Aiming or Zooming).
+  - Each shown / hidden change is logged at info with the reason and the camera state.
+
 ### Round 10 (the owner's report, 2026-09-30)
 - **Changed: "Move the conversation camera" holds the conversation in third person** (the owner: "the third person
   conversation camera while standing closely to the NPC still destroys the player body").

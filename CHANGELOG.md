@@ -23,6 +23,13 @@ name Camera Configuration Menu. Plan: 4. plans\Camera Configuration Menu (CCM)\P
     arm frozen (no inherited rotation, absolute rotation). The arm is put back when the conversation ends.
   The Status page shows which body and socket were found.
 
+### Round 9 (in progress, 2026-09-30)
+- **Fixed: the speaker lock stood down for the whole conversation.** The game's dialogue camera reports POV 0 (first
+  person) all through a conversation while it places the camera itself (log 00:48:52: "already in first person" from
+  third person). The lock was gated on POV != 0, so it ran only on the last frame, as the conversation ended. The lock
+  and the first-person switch now go by the view the player had in gameplay before the conversation, which is followed
+  every tick outside one.
+
 ### Round 8 (the owner's report, 2026-09-30)
 - **Fixed: the conversation settings did nothing.** The owner: "no matter what setting I change in the conversation tab,
   it stays locked into this left offset for the conversation camera where it's not first person, but it's really zoomed

@@ -27,6 +27,10 @@ namespace conversation
 		bool           g_forced = false;           // the switch did not hold in the conversation: ForceAndLockPOV was used
 		int            g_checkIn = 0;              // ticks until the switch is read back
 		std::uint8_t   g_previousPov = 1;          // EVPlayerPOVType: 0 first person, 1 third close, 2 third far
+		// The view the player had in GAMEPLAY, followed every tick outside a conversation. The game's own dialogue camera
+		// reports POV 0 (first person) for the whole conversation while it frames the speaker itself (log 2026-09-30
+		// 00:48:52, "already in first person" in third person) - so a conversation's view is never read from POV.
+		std::uint8_t   g_gameplayPov = 1;
 		RE::TESFormID  g_lastTalkable = 0;         // the last person or creature the player could activate, in gameplay
 		ULONGLONG      g_lastTalkableAt = 0;
 		RE::TESFormID  g_speaker = 0;
@@ -312,6 +316,7 @@ namespace conversation
 		const ULONGLONG now = GetTickCount64();
 
 		if (gameplay && !g_in) {
+			g_gameplayPov = Pov(a_controller);
 			// the person the player is about to talk to: the game's own activation target (or the crosshair's)
 			for (auto* r : { im->activateRef, im->crosshairRef }) {
 				if (Talkable(r)) {
@@ -338,7 +343,7 @@ namespace conversation
 			g_forced = false;
 			g_checkIn = 0;
 			if (s.enabled && s.conversationFirstPerson) {
-				g_previousPov = Pov(a_controller);
+				g_previousPov = g_gameplayPov;   // not Pov() here: the dialogue camera already reports 0
 				if (g_previousPov == 0) {
 					logger::info("conversation: already in first person");
 				} else if (SwitchPov(a_controller, 0)) {
@@ -383,7 +388,8 @@ namespace conversation
 			}
 		}
 
-		const bool lock = g_in && s.enabled && s.conversationLockOnSpeaker && g_speaker && !g_switched && Pov(a_controller) != 0;
+		// the lock follows the view the player came in with (third person), not the dialogue camera's POV (always 0)
+		const bool lock = g_in && s.enabled && s.conversationLockOnSpeaker && g_speaker && !g_switched && g_gameplayPov != 0;
 		if (lock) {
 			if (!g_pawnSearched) {
 				FindSpeakerPawn(RefOf(g_speaker));

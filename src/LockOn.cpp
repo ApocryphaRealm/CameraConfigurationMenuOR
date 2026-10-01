@@ -6,54 +6,92 @@
 #include "Settings.h"
 #include "Ue.h"
 
+// ================================================================================================================
+// A port of Ultimate Combat Redux's lock-on (UltimateCombatAMF\lua\Scripts\systems\LockOn.lua - Kramer7046's Ultimate
+// Combat 2.7, modified under his Nexus permissions, which allow modification with credit). The owner, 2026-10-01, after
+// CCM's own-design lock-on aimed low: "This should be simple to fix since you already have a working example. Literally
+// just copy it over and add the toggle for auto pointing at the head with the bow and the chest for melee weapons."
+//
+// Ported as written: the targets (every BP_PairedPawnAIController_C's pawn, alive, not the player, within the range by
+// GetDistanceTo, within the search angle by the yaw from the camera, in line of sight, the smallest yaw difference
+// first), the instant toggle with its 0.35 s debounce, the camera drive (the third-person arm frozen - no inherited
+// rotation, absolute - on engage and put back on release; every tick FindLookAtRotation from the camera to the aim
+// socket, a step of the difference times the tracking speed capped at 300 deg/s yaw and 180 deg/s pitch - 210 / 135 and
+// a speed of at most 0.35 in the 0.6 s action window after an attack - the pitch clamped to +-75, written to the
+// controller's ControlRotation and to the arm's RelativeRotation), the sockets (Head_Socket / Spine_Socket /
+// Pelvis_Socket, Root_Socket when the skeleton lacks one; three ticks with no aim point release), the body-part cycle
+// (wraps round, 0.15 s apart), the target switch (within the switch angle of the current target's yaw, in line of sight,
+// the nearest that side, 0.20 s apart, the body part kept), the checks every 0.4 s (dead, three line-of-sight failures,
+// beyond the range x 1.1), the camera-origin sanity release, the first-person release, the release when sheathing, and
+// the sounds (UI events 4 on lock, 11 on release, 3 on a switch or an aim-point move).
+//
+// Kept from CCM: the key and button rows (Left Alt / R3 - R3 is the owner's target-lock button), the stand-down when
+// Ultimate Combat's own lock-on is switched on, the target's name over it (the selection marker, handed over), the
+// right stick flicks for the controller (UE's stick-direction keys, read from XInput past the same dead zone), and our
+// own addition, "Aim point by weapon": a bow aims at the Head, a melee weapon at the Spine.
+// ================================================================================================================
+
 namespace lockon
 {
 	namespace
 	{
 		using namespace reflect;
+		using Clock = std::chrono::steady_clock;
 
-		constexpr float  kCellSize = 4096.0f;
-		constexpr double kChestLift = 45.0;          // cm above the target's capsule centre: its chest, not its belt
-		constexpr double kReleaseMargin = 1.25;      // a lock lets go past the range plus a quarter (no flicker at the edge)
-		constexpr double kPitchMin = -50.0, kPitchMax = 30.0;
-		constexpr float  kFlick = 0.70f, kRearm = 0.30f;   // the right stick: a flick past 70%, armed again under 30%
-		constexpr ULONGLONG kNoBodyMs = 500;         // the target's body unreadable this long: let go
+		constexpr const wchar_t* kAIControllerClass = L"/Game/Dev/Controllers/BP_PairedPawnAIController.BP_PairedPawnAIController_C";
+		constexpr double kToggleDebounce = 0.35;
+		constexpr double kSocketCooldown = 0.15;
+		constexpr double kCheckEvery = 0.4;
+		constexpr int    kLosGraceFails = 3;
+		constexpr int    kAimFailRelease = 3;
+		constexpr double kRangeRelease = 1.1;
+		constexpr double kBadCameraZ = 2000.0, kBadCameraDistance = 5000.0;
+		constexpr double kYawRate = 300.0, kPitchRate = 180.0;               // deg/s
+		constexpr double kActionYawRate = 210.0, kActionPitchRate = 135.0;   // deg/s, in the action window
+		constexpr double kActionSpeedCap = 0.35;
+		constexpr double kSnapDelta = 45.0;
+		constexpr double kDtMin = 1.0 / 60.0, kDtMax = 0.050;
+		constexpr double kPitchLimit = 75.0;
+		constexpr float  kStickPress = 8689.0f / 32767.0f;   // XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE: where UE's stick-direction keys press
+		constexpr int    kSoundLock = 4, kSoundRelease = 11, kSoundSwitch = 3;
 
-		struct Target
-		{
-			RE::TESFormID id = 0;
-			ue::Handle    pawn;
-			ue::Handle    mesh;          // its skeletal mesh, for the aim socket
-			std::wstring  socket;        // the socket aimed at ("" = the body's centre)
-			std::string   name;
-		};
-
-		// The body parts, as Ultimate Combat names and orders them (the owner, 2026-10-01: "Make sure we use the same word for
-		// word stuff as UCR does so that you can target different skeleton nodes" - this part follows Kramer7046's Ultimate
-		// Combat, LockOn.lua's SOCKET_NAMES and its Root_Socket fallback): 0 Head, 1 Spine, 2 Pelvis.
+		// The body parts, as Ultimate Combat names and orders them: 0 Head, 1 Spine, 2 Pelvis.
 		constexpr const wchar_t* kPartSockets[3] = { L"Head_Socket", L"Spine_Socket", L"Pelvis_Socket" };
 		constexpr const char*    kPartNames[3] = { "Head", "Spine", "Pelvis" };
 		constexpr const wchar_t* kSocketFallback = L"Root_Socket";
 
-		int  g_part = 1;              // the body part aimed at now
-		bool g_partManual = false;    // moved by the player this lock: holds until the next lock or weapon change
-		int  g_weaponKind = -1;       // 0 none or another kind, 1 a bow, 2 a melee weapon (-1 not read yet)
-		int  g_partQueued = 0;        // -1 up, +1 down: a key or button press, taken up on the next tick
-		bool g_stickYArmed = true;
+		struct Target
+		{
+			ue::Handle    pawn;          // the target's Unreal pawn
+			ue::Handle    mesh;          // its MainSkeletalMeshComponent
+			std::wstring  socket;        // the socket aimed at ("" = none found)
+			RE::TESFormID ref = 0;       // its Oblivion reference, for the marker (0 when not matched)
+			std::string   name;
+		};
 
 		Target      g_target;
-		bool        g_aimed = false;                 // a rotation of ours has been written since the lock began
-		std::array<double, 3> g_lastRot{};
+		bool        g_locked = false;
+		int         g_part = 1;
+		bool        g_partManual = false;
+		int         g_weaponKind = -1;
 		bool        g_toggleQueued = false;
-		bool        g_stickArmed = true;
-		ULONGLONG   g_noBodySince = 0;
-		ue::Handle  g_playerPawn;
+		int         g_partQueued = 0;
+		int         g_targetQueued = 0;
+		bool        g_stickRight = false, g_stickLeft = false, g_stickUp = false, g_stickDown = false;
+		double      g_lastToggle = -10.0, g_lastSwitchTarget = -10.0, g_lastSwitchSocket = -10.0, g_lastCheck = 0.0, g_lastStep = 0.0;
+		int         g_losFails = 0, g_aimFails = 0;
+		bool        g_wasDrawn = false;
+		ue::Handle  g_playerPawn, g_arm;
+		bool        g_armFrozen = false;
+		std::array<bool, 4> g_armSaved{};
 
-		std::mutex  g_lock;                          // for Status / State on other threads
+		std::mutex  g_lock;
 		std::string g_status = "not locked";
 		std::string g_shownTarget, g_lastRelease;
 		std::uint32_t g_engages = 0, g_switches = 0;
 		std::atomic<bool> g_ucrOn{ false };
+
+		double Now() { return std::chrono::duration<double>(Clock::now().time_since_epoch()).count(); }
 
 		void SetStatus(std::string a_s)
 		{
@@ -68,41 +106,51 @@ namespace lockon
 			if (a < -180.0) a += 360.0;
 			return a;
 		}
+		double Shortest(double a, double b) { return std::fmod(std::fmod(b - a + 540.0, 360.0) + 360.0, 360.0) - 180.0; }
 
-		std::string NameOf(RE::TESObjectREFR* a_ref)
+		// FindLookAtRotation from a to b (Unreal's world): pitch, yaw, roll 0
+		std::array<double, 3> LookAt(const std::array<double, 3>& a_from, const std::array<double, 3>& a_to)
 		{
-			auto*       base = a_ref ? a_ref->data.objectReference : nullptr;
-			const char* n = base ? RE::TESFullName::GetFullName(base) : nullptr;
-			return std::format("{} [{:08X}]", n && *n ? n : "(no name)", a_ref ? a_ref->GetFormID() : 0);
-		}
-
-		// an actor that can be locked: a person or creature in the world, alive, not the player
-		RE::Actor* Lockable(RE::TESForm* a_form, RE::PlayerCharacter* a_player)
-		{
-			// the form's type first: only then is it a reference with a cell to read
-			const auto type = a_form ? a_form->GetFormType() : RE::FormType::None;
-			if (type != RE::FormType::ActorCharacter && type != RE::FormType::ActorCreature) return nullptr;
-			auto* actor = static_cast<RE::Actor*>(a_form);
-			if (actor == a_player || actor->IsDeleted() || (actor->GetFormFlags() & RE::TESForm::RecordFlags::kDisabled) || !actor->parentCell) return nullptr;
-			return actor->IsDead(false) ? nullptr : actor;
-		}
-
-		RE::Actor* ActorById(RE::TESFormID a_id, RE::PlayerCharacter* a_player)
-		{
-			return a_id ? Lockable(RE::TESForm::LookupByID(a_id), a_player) : nullptr;
-		}
-
-		// the actor's Unreal body, through the game's own pairing (the reference's pairing entry holds its actor)
-		UE::UObject* BodyOf(RE::TESObjectREFR* a_ref)
-		{
-			auto* entry = a_ref ? static_cast<RE::IVPairableItem*>(a_ref)->pairingEntry : nullptr;
-			return entry && entry->isPaired && entry->hostItem && ue::IsLive(entry->hostItem) ? entry->hostItem : nullptr;
+			const double dx = a_to[0] - a_from[0], dy = a_to[1] - a_from[1], dz = a_to[2] - a_from[2];
+			return { std::atan2(dz, std::hypot(dx, dy)) * 180.0 / std::numbers::pi, std::atan2(dy, dx) * 180.0 / std::numbers::pi, 0.0 };
 		}
 
 		bool Location(UE::UObject* a_actor, std::array<double, 3>& a_out)
 		{
 			static ue::Getter location(L"K2_GetActorLocation");
 			return a_actor && location.Get(a_actor, a_out);
+		}
+
+		bool IsDead(UE::UObject* a_pawn)
+		{
+			ue::Call c(a_pawn, L"IsDead");
+			if (!c || !c.Run()) return false;
+			return c.Get<bool>("ReturnValue");
+		}
+
+		// pawn:GetDistanceTo(other), Unreal units (UE 5.3 returns a double; a float build is read as one)
+		double DistanceTo(UE::UObject* a_from, UE::UObject* a_to)
+		{
+			ue::Call c(a_from, L"GetDistanceTo");
+			if (!c) return 1e12;
+			c.Set("OtherActor", a_to);
+			if (!c.Run()) return 1e12;
+			const double d = c.Get<double>("ReturnValue");   // UE 5.3 returns a double (large world coordinates)
+			if (std::isfinite(d) && d >= 0.0 && d < 1e9) return d;
+			return static_cast<double>(c.Get<float>("ReturnValue"));
+		}
+
+		// pc:LineOfSightTo(pawn, camera, false)
+		bool LineOfSight(UE::UObject* a_ctrl, UE::UObject* a_pawn, const std::array<double, 3>& a_from)
+		{
+			if (!settings::Get().lockOnLineOfSight) return true;
+			ue::Call c(a_ctrl, L"LineOfSightTo");
+			if (!c) return true;
+			c.Set("Other", a_pawn);
+			c.Set("ViewPoint", a_from);
+			c.Set("bAlternateChecks", false);
+			if (!c.Run()) return true;
+			return c.Get<bool>("ReturnValue");
 		}
 
 		bool SocketExists(UE::UObject* a_mesh, const wchar_t* a_name)
@@ -114,14 +162,11 @@ namespace lockon
 			return c.Get<bool>("ReturnValue");
 		}
 
-		// The point on the target's skeleton the camera looks at (round 2, the owner, 2026-10-01: "CCM's lock on selected the
-		// name above the character instead of ... their skeleton"): the socket of the body part aimed at, Root_Socket when
-		// the skeleton lacks it, else the body's centre. Chosen again whenever the target or the body part changes.
-		void PickSocket(UE::UObject* a_body)
+		void PickSocket(UE::UObject* a_pawn)
 		{
 			g_target.mesh = {};
 			g_target.socket.clear();
-			auto* mesh = a_body ? GetObject(a_body, Find(a_body, "MainSkeletalMeshComponent")) : nullptr;
+			auto* mesh = a_pawn ? GetObject(a_pawn, Find(a_pawn, "MainSkeletalMeshComponent")) : nullptr;
 			if (!mesh) return;
 			g_target.mesh.Set(mesh);
 			if (SocketExists(mesh, kPartSockets[g_part])) {
@@ -133,22 +178,33 @@ namespace lockon
 
 		std::string SocketName()
 		{
-			if (g_target.socket.empty()) return "the body's centre";
+			if (g_target.socket.empty()) return "no socket";
 			return g_target.socket == kSocketFallback ? std::string("Root_Socket (no ") + kPartNames[g_part] + "_Socket)" : std::string(kPartNames[g_part]) + "_Socket";
 		}
 
-		// the held weapon's kind, read as the framing reads it (WeaponsPairingComponent -> WeaponActor -> WeaponTypeTag)
+		bool AimPoint(std::array<double, 3>& a_out)
+		{
+			auto* mesh = g_target.socket.empty() ? nullptr : g_target.mesh.Get();
+			if (!mesh) return false;
+			ue::Call c(mesh, L"GetSocketLocation");
+			if (!c) return false;
+			c.Set("InSocketName", UE::FName(g_target.socket.c_str(), UE::EFindName::Add));
+			c.Run();
+			a_out = c.Get<std::array<double, 3>>("ReturnValue");
+			return a_out[0] != 0.0 || a_out[1] != 0.0 || a_out[2] != 0.0;
+		}
+
+		// the held weapon's kind (WeaponsPairingComponent -> WeaponActor -> WeaponTypeTag): 0 none / other, 1 bow, 2 melee
 		int WeaponKind(UE::UObject* a_pawn)
 		{
 			auto* wpc = a_pawn ? GetObject(a_pawn, Find(a_pawn, "WeaponsPairingComponent")) : nullptr;
 			auto* weapon = wpc ? GetObject(wpc, Find(wpc, "WeaponActor")) : nullptr;
 			const std::string tag = weapon ? GetName(weapon, Find(weapon, "WeaponTypeTag.TagName")) : std::string();
-			if (tag.empty() || tag.find("Staff") != std::string::npos) return 0;   // nothing held, hand to hand, a staff
+			if (tag.empty() || tag.find("Staff") != std::string::npos) return 0;
 			return tag.find("Bow") != std::string::npos ? 1 : 2;
 		}
 
-		// "Aim point by weapon" (the owner, 2026-10-01: "while using a bow, it automatically targets the head, and while using a
-		// melee weapon, it automatically targets the chest"): a bow Head, a melee weapon Spine, anything else the starting part
+		// "Aim point by weapon" (ours): a bow Head, a melee weapon Spine, anything else the starting aim point
 		int PartFor(int a_kind, const settings::Values& a_s)
 		{
 			if (a_s.lockOnAimByWeapon && a_kind == 1) return 0;
@@ -163,160 +219,179 @@ namespace lockon
 			return "the starting aim point";
 		}
 
-		// where to look this frame (Unreal's world); false when neither the socket nor the body can be read
-		bool AimPoint(UE::UObject* a_body, std::array<double, 3>& a_out)
+		// a UI sound by Ultimate Combat's id (its systems/Sound.lua table), posted on the player's pawn
+		void PlaySound(int a_id, UE::UObject* a_pawn)
 		{
-			if (auto* mesh = g_target.socket.empty() ? nullptr : g_target.mesh.Get()) {
-				ue::Call c(mesh, L"GetSocketLocation");
-				if (c) {
-					c.Set("InSocketName", UE::FName(g_target.socket.c_str(), UE::EFindName::Add));
-					c.Run();
-					a_out = c.Get<std::array<double, 3>>("ReturnValue");
-					if (a_out[0] != 0.0 || a_out[1] != 0.0 || a_out[2] != 0.0) return true;
-				}
-			}
-			return Location(a_body, a_out);   // the body's centre: no lift - above it is where the name stands
+			if (!settings::Get().lockOnPlaySound || !a_pawn) return;
+			static const wchar_t* kPaths[] = {
+				L"/Game/WwiseAudio/Interface/Global/Redesign/ui_glb_popup_yes.ui_glb_popup_yes",              // 3
+				L"/Game/WwiseAudio/Interface/Global/Redesign/ui_glb_hover.ui_glb_hover",                      // 4
+				L"/Game/WwiseAudio/Interface/Other/Redesign/ui_quickkeys_hover.ui_quickkeys_hover",           // 11
+			};
+			const wchar_t* path = a_id == 3 ? kPaths[0] : a_id == 4 ? kPaths[1] : a_id == 11 ? kPaths[2] : nullptr;
+			auto* ev = path ? UE::StaticFindObject(nullptr, nullptr, path) : nullptr;
+			if (!ev || !ue::IsLive(ev)) return;   // not loaded this session: silent, as Ultimate Combat's
+			ue::Call post(ev, L"PostOnActor");
+			if (!post) return;
+			post.Set("Actor", a_pawn);
+			post.Set("bStopWhenAttachedToDestroyed", false);
+			post.Run();
 		}
 
-		// the cells around the player: its own inside, the 3 x 3 around it outside
-		std::vector<RE::TESObjectCELL*> NearbyCells(RE::PlayerCharacter* a_player)
+		// the Oblivion reference whose paired Unreal pawn this is (for the marker), from the cells around the player
+		RE::TESObjectREFR* RefOfPawn(UE::UObject* a_pawn, RE::PlayerCharacter* a_player)
 		{
-			std::vector<RE::TESObjectCELL*> cells;
-			auto* cell = a_player->parentCell;
-			if (!cell) return cells;
-			cells.push_back(cell);
-			if (a_player->GetInterior()) return cells;
-			auto* world = a_player->GetWorldSpace();
-			if (!world || !world->cellMap) return cells;
-			const auto& p = a_player->data.location;
-			const int   cx = static_cast<int>(std::floor(p.x / kCellSize)), cy = static_cast<int>(std::floor(p.y / kCellSize));
-			for (int dx = -1; dx <= 1; ++dx) {
-				for (int dy = -1; dy <= 1; ++dy) {
-					const std::int32_t key = static_cast<std::int32_t>((static_cast<std::uint32_t>(cx + dx) << 16) | (static_cast<std::uint32_t>(cy + dy) & 0xFFFF));
-					const auto it = world->cellMap->find(key);
-					if (it != world->cellMap->end() && it->second && std::ranges::find(cells, it->second) == cells.end()) cells.push_back(it->second);
+			if (!a_pawn || !a_player || !a_player->parentCell) return nullptr;
+			std::vector<RE::TESObjectCELL*> cells{ a_player->parentCell };
+			if (!a_player->GetInterior()) {
+				if (auto* world = a_player->GetWorldSpace(); world && world->cellMap) {
+					const auto& p = a_player->data.location;
+					const int   cx = static_cast<int>(std::floor(p.x / 4096.0f)), cy = static_cast<int>(std::floor(p.y / 4096.0f));
+					for (int dx = -1; dx <= 1; ++dx) {
+						for (int dy = -1; dy <= 1; ++dy) {
+							const std::int32_t key = static_cast<std::int32_t>((static_cast<std::uint32_t>(cx + dx) << 16) | (static_cast<std::uint32_t>(cy + dy) & 0xFFFF));
+							const auto it = world->cellMap->find(key);
+							if (it != world->cellMap->end() && it->second && std::ranges::find(cells, it->second) == cells.end()) cells.push_back(it->second);
+						}
+					}
 				}
 			}
-			return cells;
+			for (auto* cell : cells) {
+				for (auto* ref : cell->listReferences) {
+					const auto type = ref ? ref->GetFormType() : RE::FormType::None;
+					if (type != RE::FormType::ActorCharacter && type != RE::FormType::ActorCreature) continue;
+					auto* entry = static_cast<RE::IVPairableItem*>(ref)->pairingEntry;
+					if (entry && entry->isPaired && entry->hostItem == a_pawn) return ref;
+				}
+			}
+			return nullptr;
+		}
+
+		std::string NameOf(UE::UObject* a_pawn, RE::TESObjectREFR* a_ref)
+		{
+			if (a_ref) {
+				auto*       base = a_ref->data.objectReference;
+				const char* n = base ? RE::TESFullName::GetFullName(base) : nullptr;
+				return std::format("{} [{:08X}]", n && *n ? n : "(no name)", a_ref->GetFormID());
+			}
+			return a_pawn ? ue::NameOf(a_pawn) : std::string("?");
 		}
 
 		struct Candidate
 		{
-			RE::Actor*            actor = nullptr;
-			UE::UObject*          body = nullptr;
-			std::array<double, 3> at{};      // Unreal world, the body's centre
-			double                dist = 0;  // Oblivion units from the player
-			double                yaw = 0;   // the direction from the player's body, degrees (Unreal)
-			double                off = 0;   // degrees from the camera's aim (3D)
-			bool                  hostile = false;
+			UE::UObject*          pawn = nullptr;
+			std::array<double, 3> at{};
+			double                yaw = 0;    // from the camera
+			double                score = 0;  // |yaw difference| from the camera's own yaw
 		};
 
-		// every lockable actor within a_range of the player whose body can be read
-		std::vector<Candidate> Gather(RE::PlayerCharacter* a_player, const std::array<double, 3>& a_me, const std::array<double, 3>& a_cam,
-			const std::array<double, 3>& a_camFwd, double a_range)
+		// every AI controller's pawn that can be locked (alive, not the player, within the range); yaw and score from the camera
+		std::vector<Candidate> Gather(UE::UObject* a_player, const std::array<double, 3>& a_cam, double a_camYaw, double a_range)
 		{
 			std::vector<Candidate> out;
-			const auto& me = a_player->data.location;
-			for (auto* cell : NearbyCells(a_player)) {
-				for (auto* ref : cell->listReferences) {
-					auto* actor = Lockable(ref, a_player);
-					if (!actor) continue;
-					const auto& p = actor->data.location;
-					const double dist = std::hypot(p.x - me.x, p.y - me.y, p.z - me.z);
-					if (dist > a_range) continue;
-					Candidate c{ .actor = actor, .dist = dist };
-					c.body = BodyOf(actor);
-					if (!c.body || !Location(c.body, c.at)) continue;
-					c.yaw = std::atan2(c.at[1] - a_me[1], c.at[0] - a_me[0]) * 180.0 / std::numbers::pi;
-					const double tx = c.at[0] - a_cam[0], ty = c.at[1] - a_cam[1], tz = c.at[2] + kChestLift - a_cam[2];
-					const double tl = std::hypot(tx, ty, tz);
-					if (tl < 1.0) continue;
-					const double cosOff = (tx * a_camFwd[0] + ty * a_camFwd[1] + tz * a_camFwd[2]) / tl;
-					c.off = std::acos(std::clamp(cosOff, -1.0, 1.0)) * 180.0 / std::numbers::pi;
-					c.hostile = actor->GetCombatTarget() == a_player;
-					out.push_back(c);
-				}
+			static auto* cls = ue::Class(kAIControllerClass);
+			if (!cls) cls = ue::Class(kAIControllerClass);
+			if (!cls) return out;
+			for (auto* ctrl : ue::AllOf(cls)) {
+				auto* pawn = GetObject(ctrl, Find(ctrl, "Pawn"));
+				if (!pawn || pawn == a_player || IsDead(pawn)) continue;
+				if (DistanceTo(a_player, pawn) > a_range) continue;
+				Candidate c{ .pawn = pawn };
+				if (!Location(pawn, c.at)) continue;
+				c.yaw = LookAt(a_cam, c.at)[1];
+				c.score = std::abs(Shortest(a_camYaw, c.yaw));
+				out.push_back(c);
 			}
 			return out;
 		}
 
-		std::array<double, 3> Forward(const std::array<double, 3>& a_rot)   // FRotator (pitch, yaw, roll) -> unit vector
+		void FreezeArm(UE::UObject* a_arm)
 		{
-			const double p = a_rot[0] * std::numbers::pi / 180.0, y = a_rot[1] * std::numbers::pi / 180.0;
-			return { std::cos(p) * std::cos(y), std::cos(p) * std::sin(y), std::sin(p) };
+			if (!a_arm || g_armFrozen) return;
+			g_armSaved = { GetBool(a_arm, Find(a_arm, "bInheritPitch")), GetBool(a_arm, Find(a_arm, "bInheritYaw")), GetBool(a_arm, Find(a_arm, "bInheritRoll")),
+				GetBool(a_arm, Find(a_arm, "bAbsoluteRotation")) };
+			SetBool(a_arm, Find(a_arm, "bInheritYaw"), false);
+			SetBool(a_arm, Find(a_arm, "bInheritPitch"), false);
+			SetBool(a_arm, Find(a_arm, "bInheritRoll"), false);
+			SetBool(a_arm, Find(a_arm, "bAbsoluteRotation"), true);
+			g_arm.Set(a_arm);
+			g_armFrozen = true;
 		}
 
-		void Release(const char* a_why)
+		void RestoreArm()
 		{
-			if (!g_target.id) return;
+			if (!g_armFrozen) return;
+			g_armFrozen = false;
+			auto* arm = g_arm.Get();
+			if (!arm) return;
+			SetBool(arm, Find(arm, "bInheritPitch"), g_armSaved[0]);
+			SetBool(arm, Find(arm, "bInheritYaw"), g_armSaved[1]);
+			SetBool(arm, Find(arm, "bInheritRoll"), g_armSaved[2]);
+			SetBool(arm, Find(arm, "bAbsoluteRotation"), g_armSaved[3]);
+		}
+
+		void Release(const char* a_why, UE::UObject* a_playerPawn)
+		{
+			if (!g_locked) return;
+			g_locked = false;
 			logger::info("lock-on: let go of {} - {}", g_target.name, a_why);
-			{
-				std::scoped_lock l(g_lock);
-				g_lastRelease = a_why;
-			}
+			PlaySound(kSoundRelease, a_playerPawn);
+			RestoreArm();
 			g_target = {};
-			g_aimed = false;
 			marker::Lock(nullptr);
 			{
 				std::scoped_lock l(g_lock);
+				g_lastRelease = a_why;
 				g_shownTarget.clear();
 			}
 			SetStatus(std::format("not locked (last: {})", a_why));
 		}
 
-		// a_fresh: a new lock (the body part starts again); a switch to another target keeps the part, as Ultimate Combat does
-		void Engage(const Candidate& a_c, const char* a_how, bool a_fresh, int a_kind, const settings::Values& a_s)
+		void SetTarget(UE::UObject* a_pawn, RE::PlayerCharacter* a_player)
 		{
-			g_target.id = a_c.actor->GetFormID();
-			g_target.pawn.Set(a_c.body);
-			g_target.name = NameOf(a_c.actor);
-			if (a_fresh) {
-				g_part = PartFor(a_kind, a_s);
-				g_partManual = false;
-				g_weaponKind = a_kind;
+			g_target.pawn.Set(a_pawn);
+			auto* ref = RefOfPawn(a_pawn, a_player);
+			g_target.ref = ref ? ref->GetFormID() : 0;
+			g_target.name = NameOf(a_pawn, ref);
+			PickSocket(a_pawn);
+			g_losFails = 0;
+			g_aimFails = 0;
+			std::scoped_lock l(g_lock);
+			g_shownTarget = g_target.name;
+		}
+
+		void Engage(const Candidate& a_c, const In& a_in, RE::PlayerCharacter* a_player, int a_kind, const settings::Values& a_s)
+		{
+			auto* arm = GetObject(a_in.pawn, Find(a_in.pawn, "ThirdPersonCameraSpringArmComponent"));
+			if (!arm) {
+				logger::info("lock-on: no third-person arm - not locked");
+				return;
 			}
-			PickSocket(a_c.body);
-			g_noBodySince = 0;
-			logger::info("lock-on: {} {} ({:.0f} units, {:.0f} degrees off the aim{}; aim point {}{})", a_how, g_target.name, a_c.dist, a_c.off,
-				a_c.hostile ? ", fighting you" : "", SocketName(), a_fresh ? std::format(" - {}", WhyPart(a_kind, a_s)) : std::string());
-			{
-				std::scoped_lock l(g_lock);
-				g_shownTarget = g_target.name;
-			}
+			g_part = PartFor(a_kind, a_s);
+			g_partManual = false;
+			g_weaponKind = a_kind;
+			SetTarget(a_c.pawn, a_player);
+			g_locked = true;
+			g_lastCheck = Now();
+			g_lastStep = 0.0;
+			FreezeArm(arm);
+			++g_engages;
+			PlaySound(kSoundLock, a_in.pawn);
+			logger::info("lock-on: locked on {} ({:.1f} degrees off the camera; aim point {} - {})", g_target.name, a_c.score, SocketName(), WhyPart(a_kind, a_s));
 			SetStatus("locked on " + g_target.name);
 		}
 
-		// the best target to take: inside the cone, a hostile fighting you first, then the nearest the middle of the view
-		const Candidate* Best(const std::vector<Candidate>& a_all, double a_maxAngle, double a_range)
+		// Ultimate Combat's step_rotation: the difference times the speed, each axis capped at its rate x dt
+		std::array<double, 3> Step(const std::array<double, 3>& a_cur, const std::array<double, 3>& a_goal, double a_speed, double a_pitchMax, double a_yawMax)
 		{
-			const Candidate* best = nullptr;
-			double           bestScore = 0;
-			for (const auto& c : a_all) {
-				if (c.off > a_maxAngle) continue;
-				const double score = c.off / std::max(1.0, a_maxAngle) + 0.4 * c.dist / std::max(1.0, a_range) - (c.hostile ? 0.5 : 0.0);
-				if (!best || score < bestScore) {
-					best = &c;
-					bestScore = score;
-				}
-			}
-			return best;
-		}
-
-		// the next target to the side the stick was flicked: the smallest turn that way from the current one
-		const Candidate* NextToward(const std::vector<Candidate>& a_all, double a_fromYaw, int a_side)
-		{
-			const Candidate* best = nullptr;
-			double           bestTurn = 0;
-			for (const auto& c : a_all) {
-				if (c.actor->GetFormID() == g_target.id) continue;
-				const double turn = Normal(c.yaw - a_fromYaw) * a_side;   // Unreal's yaw grows to the right
-				if (turn <= 2.0 || turn > 120.0) continue;
-				if (!best || turn < bestTurn) {
-					best = &c;
-					bestTurn = turn;
-				}
-			}
-			return best;
+			const double cp = Normal(a_cur[0]), gp = Normal(a_goal[0]), cy = Normal(a_cur[1]), gy = Normal(a_goal[1]);
+			const double dp = Shortest(cp, gp), dyaw = Shortest(cy, gy);
+			double sp = dp * a_speed, sy = dyaw * a_speed;
+			// the snap guard (a difference of 45 or more) uses the snap rates - the same numbers as the normal ones
+			(void)kSnapDelta;
+			sp = std::clamp(sp, -a_pitchMax, a_pitchMax);
+			sy = std::clamp(sy, -a_yawMax, a_yawMax);
+			return { std::clamp(Normal(cp + sp), -kPitchLimit, kPitchLimit), Normal(cy + sy), 0.0 };
 		}
 
 		// [Lock-On] in Ultimate Combat's INI: the section whose VarName is LockOnEnabled, its value (read at most every 2 s)
@@ -340,7 +415,8 @@ namespace lockon
 					const auto start = text.rfind("\n[", var);
 					auto       end = text.find("\n[", var);
 					if (end == std::string::npos) end = text.size();
-					const auto section = std::string_view(text).substr(start == std::string::npos ? 0 : start, end - (start == std::string::npos ? 0 : start));
+					const auto from = start == std::string::npos ? 0 : start;
+					const auto section = std::string_view(text).substr(from, end - from);
 					const auto v = section.find("\nvalue=");
 					on = v != std::string_view::npos && v + 7 < section.size() && section[v + 7] == '1';
 				}
@@ -352,103 +428,92 @@ namespace lockon
 		}
 	}
 
-	void Toggle()
-	{
-		g_toggleQueued = true;
-	}
-
-	void MoveAimPoint(int a_dir)
-	{
-		g_partQueued = a_dir < 0 ? -1 : 1;
-	}
-
-	bool Active()
-	{
-		return g_target.id != 0;
-	}
-
-	bool UltimateCombatOwnsIt()
-	{
-		return g_ucrOn.load();   // any thread: the game thread's last read
-	}
+	void Toggle() { g_toggleQueued = true; }
+	void MoveAimPoint(int a_dir) { g_partQueued = a_dir < 0 ? -1 : 1; }
+	void MoveTarget(int a_dir) { g_targetQueued = a_dir < 0 ? -1 : 1; }
+	bool Active() { return g_locked; }
+	bool UltimateCombatOwnsIt() { return g_ucrOn.load(); }
 
 	void Tick(const In& a_in)
 	{
 		const auto& s = settings::Get();
 		auto*       player = RE::PlayerCharacter::GetSingleton();
-		const bool  pressed = std::exchange(g_toggleQueued, false);
+		const double now = Now();
+		bool        pressed = std::exchange(g_toggleQueued, false);
 		int         partMove = std::exchange(g_partQueued, 0);
-		const int   kind = WeaponKind(a_in.pawn);
+		int         targetMove = std::exchange(g_targetQueued, 0);
 
-		// a new pawn is a load: nothing from before carries over
-		if (g_playerPawn.Get() != a_in.pawn) {
+		if (g_playerPawn.Get() != a_in.pawn) {   // a load: nothing carries over
 			g_playerPawn.Set(a_in.pawn);
-			Release("a new game was loaded");
+			Release("a new game was loaded", a_in.pawn);
+			g_armFrozen = false;
 		}
-		const bool ucrOn = ReadUltimateCombatSwitch();
+		const bool  ucrOn = ReadUltimateCombatSwitch();
+		const bool  dialogue = a_in.cameraTag && a_in.cameraTag->find("Dialogue") != std::string::npos;
 		const char* blocked = !s.enabled ? "CCM is off" : !s.lockOnEnabled ? "the lock-on is switched off" : ucrOn ? "Ultimate Combat's own lock-on is on" :
-		                      a_in.firstPerson ? "first person" : a_in.cameraTag && a_in.cameraTag->find("Dialogue") != std::string::npos ? "a conversation" : nullptr;
+		                      a_in.firstPerson ? "first-person active" : dialogue ? "a conversation" : nullptr;
 		if (blocked) {
-			Release(blocked);
+			Release(blocked, a_in.pawn);
 			if (pressed) logger::info("lock-on: the key was pressed - nothing to do ({})", blocked);
-			if (!Active()) SetStatus(std::format("not available - {}", blocked));
+			if (!g_locked) SetStatus(std::format("not available - {}", blocked));
 			return;
 		}
 		if (a_in.ucrLocked) {
-			Release("Ultimate Combat locked on");
-			return;
-		}
-		if (pressed && Active()) {
-			Release("the key was pressed again");
+			Release("Ultimate Combat locked on", a_in.pawn);
 			return;
 		}
 		if (!player || !a_in.ctrl || !a_in.mgr || !a_in.pawn) return;
 
-		std::array<double, 3> me{}, cam{}, camRot{};
-		static ue::Getter camLocation(L"GetCameraLocation"), camRotation(L"GetCameraRotation");
-		if (!Location(a_in.pawn, me) || !camLocation.Get(a_in.mgr, cam) || !camRotation.Get(a_in.mgr, camRot)) return;
+		// the release when sheathing (Ultimate Combat's cancel_on_sheathe): the weapon put away while locked
+		const bool drawn = GetBool(a_in.pawn, Find(a_in.pawn, "bInCombatStance"));
+		if (g_locked && s.lockOnCancelOnSheathe && g_wasDrawn && !drawn) {
+			Release("weapon sheathed", a_in.pawn);
+		}
+		g_wasDrawn = drawn;
 
+		// the instant toggle, debounced 0.35 s
+		if (pressed && now - g_lastToggle < kToggleDebounce) {
+			logger::debug("lock-on: instant toggle ignored - debounce");
+			pressed = false;
+		}
+		if (pressed) g_lastToggle = now;
+		if (pressed && g_locked) {
+			Release("toggled off", a_in.pawn);
+			return;
+		}
+
+		std::array<double, 3> cam{}, camRot{}, me{};
+		static ue::Getter camLocation(L"GetCameraLocation"), camRotation(L"GetCameraRotation"), controlRotation(L"GetControlRotation");
+		if (!camLocation.Get(a_in.mgr, cam) || !camRotation.Get(a_in.mgr, camRot) || !Location(a_in.pawn, me)) return;
 		const double range = s.lockOnRange;
-		if (pressed) {
-			const auto all = Gather(player, me, cam, Forward(camRot), range);
-			if (const auto* best = Best(all, s.lockOnAngle, range)) {
-				++g_engages;
-				Engage(*best, "locked on", true, kind, s);
-			} else {
-				logger::info("lock-on: the key was pressed - no one within {:.0f} units and {:.0f} degrees of the aim ({} in range)", range, s.lockOnAngle, all.size());
-				SetStatus("not locked - no one to lock on");
-			}
-		}
-		if (!Active()) return;
+		const int    kind = WeaponKind(a_in.pawn);
 
-		// the target: still there, alive, in range?
-		auto* actor = ActorById(g_target.id, player);
-		if (!actor) {
-			Release("the target died or is gone");
-			return;
-		}
-		const auto& tp = actor->data.location;
-		const auto& pp = player->data.location;
-		if (std::hypot(tp.x - pp.x, tp.y - pp.y, tp.z - pp.z) > range * kReleaseMargin) {
-			Release("the target is out of range");
-			return;
-		}
-		auto* body = g_target.pawn.Get();
-		if (!body) {
-			body = BodyOf(actor);   // the body can be rebuilt (a cell reload): look it up again
-			if (body) {
-				g_target.pawn.Set(body);
-				PickSocket(body);
+		if (pressed) {
+			if (s.lockOnWeaponsDrawnOnly && !drawn) {
+				logger::info("lock-on: engage refused - weapons not drawn");
+			} else {
+				const auto       all = Gather(a_in.pawn, cam, camRot[1], range);
+				const Candidate* best = nullptr;
+				for (const auto& c : all) {
+					if (c.score > s.lockOnAngle) continue;
+					if (!LineOfSight(a_in.ctrl, c.pawn, cam)) continue;
+					if (!best || c.score < best->score) best = &c;
+				}
+				if (best) {
+					Engage(*best, a_in, player, kind, s);
+				} else {
+					logger::info("lock-on: no target in front of camera ({} within range, search angle {:.0f})", all.size(), s.lockOnAngle);
+					SetStatus("not locked - no target in front of the camera");
+				}
 			}
 		}
-		std::array<double, 3> at{}, aim{};
-		if (!body || !Location(body, at) || !AimPoint(body, aim)) {
-			const ULONGLONG now = GetTickCount64();
-			if (!g_noBodySince) g_noBodySince = now;
-			if (now - g_noBodySince >= kNoBodyMs) Release("the target's body cannot be read");
+		if (!g_locked) return;
+
+		auto* target = g_target.pawn.Get();
+		if (!target) {
+			Release("invalid target", a_in.pawn);
 			return;
 		}
-		g_noBodySince = 0;
 
 		// a menu is up: hold the lock, turn nothing, mark nothing
 		auto* im = RE::InterfaceManager::GetInstance(false, false);
@@ -457,34 +522,54 @@ namespace lockon
 			return;
 		}
 
-		// the right stick: flicked left or right, the next target to that side; up or down, the aim point a body part
+		// the controller's right stick, read as UE's stick-direction keys (pressed past the stick's dead zone)
 		float rx = 0.0f, ry = 0.0f;
-		const bool pad = (s.lockOnStickSwitch || s.lockOnStickAimPoint) && game::PadRightStick(rx, ry);
-		if (pad && s.lockOnStickSwitch) {
-			if (g_stickArmed && std::abs(rx) >= kFlick && std::abs(rx) > std::abs(ry)) {
-				g_stickArmed = false;
-				const double fromYaw = std::atan2(at[1] - me[1], at[0] - me[0]) * 180.0 / std::numbers::pi;
-				const auto   all = Gather(player, me, cam, Forward(camRot), range);
-				if (const auto* next = NextToward(all, fromYaw, rx > 0 ? 1 : -1)) {
-					++g_switches;
-					Engage(*next, rx > 0 ? "switched right to" : "switched left to", false, kind, s);
-					body = next->body;
-					at = next->at;
-					if (!AimPoint(body, aim)) aim = at;
+		if ((s.lockOnStickSwitch || s.lockOnStickAimPoint) && game::PadRightStick(rx, ry)) {
+			const bool right = rx > kStickPress, left = rx < -kStickPress, up = ry > kStickPress, down = ry < -kStickPress;
+			if (s.lockOnStickSwitch && right && !g_stickRight) targetMove = 1;
+			if (s.lockOnStickSwitch && left && !g_stickLeft) targetMove = -1;
+			if (s.lockOnStickAimPoint && up && !g_stickUp) partMove = -1;
+			if (s.lockOnStickAimPoint && down && !g_stickDown) partMove = 1;
+			g_stickRight = right;
+			g_stickLeft = left;
+			g_stickUp = up;
+			g_stickDown = down;
+		}
+
+		// the target switch: within the switch angle of the current target's yaw, in line of sight, the nearest that side
+		if (targetMove != 0 && now - g_lastSwitchTarget >= s.lockOnSwitchCooldown) {
+			g_lastSwitchTarget = now;
+			std::array<double, 3> curAt{};
+			if (Location(target, curAt)) {
+				const double     curYaw = LookAt(cam, curAt)[1];
+				const Candidate* best = nullptr;
+				double           bestDelta = 1e9;
+				const auto       all = Gather(a_in.pawn, cam, camRot[1], range);
+				for (const auto& c : all) {
+					if (c.pawn == target) continue;
+					const double d = Shortest(curYaw, c.yaw);
+					if (std::abs(d) > s.lockOnSwapAngle || std::abs(d) <= 0.1) continue;
+					if ((targetMove > 0 && d <= 0.1) || (targetMove < 0 && d >= -0.1)) continue;
+					if (!LineOfSight(a_in.ctrl, c.pawn, cam)) continue;
+					if (std::abs(d) < bestDelta) {
+						best = &c;
+						bestDelta = std::abs(d);
+					}
 				}
-			} else if (std::abs(rx) <= kRearm) {
-				g_stickArmed = true;
+				if (best) {
+					SetTarget(best->pawn, player);
+					target = best->pawn;
+					++g_switches;
+					PlaySound(kSoundSwitch, a_in.pawn);
+					logger::info("lock-on: switched {} to {} (delta {:.1f}; aim point {})", targetMove > 0 ? "right" : "left", g_target.name, bestDelta, SocketName());
+					SetStatus("locked on " + g_target.name);
+				} else {
+					logger::debug("lock-on: target switch skipped - no candidate that side");
+				}
 			}
 		}
-		if (pad && s.lockOnStickAimPoint) {
-			if (g_stickYArmed && std::abs(ry) >= kFlick && std::abs(ry) > std::abs(rx)) {
-				g_stickYArmed = false;
-				partMove = ry > 0 ? -1 : 1;   // stick up: up a body part (XInput's Y grows upward)
-			} else if (std::abs(ry) <= kRearm) {
-				g_stickYArmed = true;
-			}
-		}
-		// the weapon changed while locked: the body part follows it again (a manual move held until now is dropped)
+
+		// the weapon changed while locked: aim point by weapon again (a body part moved by the player is dropped)
 		if (kind != g_weaponKind) {
 			const int was = g_weaponKind;
 			g_weaponKind = kind;
@@ -493,35 +578,85 @@ namespace lockon
 				g_partManual = false;
 				if (part != g_part) {
 					g_part = part;
-					PickSocket(body);
+					PickSocket(target);
 					logger::info("lock-on: aim point {} - {}", SocketName(), WhyPart(kind, s));
-					if (!AimPoint(body, aim)) aim = at;
 				}
 			}
 		}
-		// up or down a body part, wrapping round as Ultimate Combat's does: up Pelvis -> Spine -> Head, down Head -> Spine -> Pelvis
-		if (partMove != 0) {
+		// up or down a body part, wrapping round (up Pelvis -> Spine -> Head, down Head -> Spine -> Pelvis), 0.15 s apart
+		if (partMove != 0 && now - g_lastSwitchSocket >= kSocketCooldown) {
+			g_lastSwitchSocket = now;
 			g_part = (g_part + partMove + 3) % 3;
 			g_partManual = true;
-			PickSocket(body);
+			PickSocket(target);
+			PlaySound(kSoundSwitch, a_in.pawn);
 			logger::info("lock-on: aim point {} - moved {}", SocketName(), partMove < 0 ? "up" : "down");
-			if (!AimPoint(body, aim)) aim = at;
 		}
 
-		// where to look: the yaw along the line from the player's body to the target's skeleton, the pitch from the camera to it
-		const double goalYaw = std::atan2(aim[1] - me[1], aim[0] - me[0]) * 180.0 / std::numbers::pi;
-		const double dz = aim[2] - cam[2];
-		const double goalPitch = std::clamp(std::atan2(dz, std::hypot(aim[0] - cam[0], aim[1] - cam[1])) * 180.0 / std::numbers::pi - s.lockOnLookDown, kPitchMin, kPitchMax);
+		// the aim point: three ticks without one release
+		std::array<double, 3> aim{};
+		if (!AimPoint(aim)) {
+			if (++g_aimFails >= kAimFailRelease) Release("lost aim socket", a_in.pawn);
+			return;
+		}
+		g_aimFails = 0;
 
-		// from our own last rotation (the stick's turning this frame is not followed); on the first frame the camera's
-		std::array<double, 3> cur = g_aimed ? g_lastRot : camRot;
-		const double k = s.lockOnTurnTime <= 0.0f ? 1.0 : 1.0 - std::exp(-std::max(0.0, a_in.dt) / s.lockOnTurnTime);
-		const std::array<double, 3> rot{ Normal(cur[0] + Normal(goalPitch - cur[0]) * k), Normal(cur[1] + Normal(goalYaw - cur[1]) * k), 0.0 };
+		// the camera's origin must be near the player (a load, a cutscene)
+		const double cdz = cam[2] - me[2];
+		if (std::abs(cdz) > kBadCameraZ || std::hypot(cam[0] - me[0], cam[1] - me[1], cdz) > kBadCameraDistance) {
+			Release("bad camera origin", a_in.pawn);
+			return;
+		}
+
+		// the camera drive: from the controller's rotation toward the look-at from the camera to the aim point
+		std::array<double, 3> cur{};
+		if (!controlRotation.Get(a_in.ctrl, cur)) return;
+		const auto   goal = LookAt(cam, aim);
+		const bool   action = game::ActionWindowActive();
+		const double speed = std::clamp(static_cast<double>(s.lockOnSmoothSpeed), 0.01, 1.0);
+		const double dt = std::clamp(g_lastStep > 0.0 ? now - g_lastStep : kDtMin, kDtMin, kDtMax);
+		g_lastStep = now;
+		const auto rot = Step(cur, goal, action ? std::min(speed, kActionSpeedCap) : speed, (action ? kActionPitchRate : kPitchRate) * dt,
+			(action ? kActionYawRate : kYawRate) * dt);
+		auto* arm = g_arm.Get();
+		if (!arm) {
+			Release("third-person arm unavailable", a_in.pawn);
+			return;
+		}
 		SetVec(a_in.ctrl, Find(a_in.ctrl, "ControlRotation"), rot);
-		g_lastRot = rot;
-		g_aimed = true;
+		SetVec(arm, Find(arm, "RelativeRotation"), rot);
 
-		marker::Lock(s.lockOnMarker ? actor : nullptr);
+		// every 0.4 s: dead, line of sight (three failures), out of range (x 1.1)
+		if (now - g_lastCheck > kCheckEvery) {
+			g_lastCheck = now;
+			if (IsDead(target)) {
+				Release("target dead", a_in.pawn);
+				return;
+			}
+			if (s.lockOnLineOfSight) {
+				if (!LineOfSight(a_in.ctrl, target, cam)) {
+					if (++g_losFails >= kLosGraceFails) {
+						Release("lost line of sight", a_in.pawn);
+						return;
+					}
+				} else {
+					g_losFails = 0;
+				}
+			}
+			if (DistanceTo(a_in.pawn, target) > range * kRangeRelease) {
+				Release("out of range", a_in.pawn);
+				return;
+			}
+		}
+
+		// the marker over the target (by its Oblivion reference)
+		RE::TESObjectREFR* ref = nullptr;
+		if (g_target.ref) {
+			auto* form = RE::TESForm::LookupByID(g_target.ref);
+			const auto type = form ? form->GetFormType() : RE::FormType::None;
+			if (type == RE::FormType::ActorCharacter || type == RE::FormType::ActorCreature) ref = static_cast<RE::TESObjectREFR*>(form);
+		}
+		marker::Lock(s.lockOnMarker ? ref : nullptr);
 	}
 
 	std::string Status()

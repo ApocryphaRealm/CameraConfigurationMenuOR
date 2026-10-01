@@ -14,11 +14,14 @@ WHAT YOU GET
   * Framing per situation: standing, moving, sprinting, sneaking, a weapon drawn, holding a bow, aiming a bow
     (with its own field of view), swimming, on horseback and in conversation. Each moves the camera sideways,
     up and back from where the game puts it, or uses Standing's position. Shoulder swap on a key.
-  * Target lock-on: Left Alt or the right stick click (R3) locks the camera on to the person or creature nearest
-    where you look - one fighting you first - and lets go on the next press. A flick of the right stick moves the
-    lock to the next target that side; your character faces the camera while locked, so dodges go where you
-    expect. Range, angle, turn time and how far the view tilts down are on the page. If Ultimate Combat Redux's
-    own lock-on is switched on in its settings, CCM's stands down.
+  * Target lock-on, ported from Ultimate Combat: Left Alt or the right stick click (R3) locks the camera on to the
+    target nearest the middle of the screen and lets go on the next press. The camera aims at a body part on the
+    target's skeleton - Head, Spine or Pelvis, moved with the right stick up / down - and with "Aim point by weapon"
+    a bow aims at the head and a melee weapon at the chest. The right stick left / right (Z / X on the keyboard)
+    switches target. Your character faces the camera while locked, so dodges go where you expect. Range, search and
+    switch angles, tracking speed, line of sight, release when sheathing and the sounds are on the page. If Ultimate
+    Combat Redux's own lock-on is switched on in its settings, CCM's stands down.
+  * How fast your character turns with the free camera, as a percentage of the game's own turn speed.
   * Conversation camera: the game's first-person view, or a third-person view held on the person you talk to.
   * Zoom: start at the far zoom after loading, or replace the game's two zoom distances.
   * Smoothing: new positions slide in on a chosen curve; how tightly the camera follows movement, looking up
@@ -34,9 +37,6 @@ WHAT YOU GET
 KNOWN ISSUES
 ------------
   * The crosshair can stay hidden while aiming a bow (the game hides it while drawing). Being worked on.
-  * The lock-on does not check line of sight: a target that walks behind a wall stays locked until it is out of
-    range, dies, or you let go.
-  * Switching targets is on the right stick only; on keyboard and mouse, let go and lock on again.
 
 INSTALLATION
 ------------
@@ -71,8 +71,8 @@ CREDITS
 -------
   The conversation camera holds on the speaker the way Ultimate Combat's lock-on holds a target (Kramer7046's
   Ultimate Combat, whose permissions allow modification with credit).
-  Body-part aim points (Head / Spine / Pelvis) follow Ultimate Combat by Kramer7046, whose permissions allow
-  modification with credit. The rest of CCM's lock-on is its own design.
+  Target lock-on follows Ultimate Combat by Kramer7046 (ported from Ultimate Combat Redux), whose permissions allow
+  modification with credit; aim point by weapon is ours.
 
 LICENCE
 -------

@@ -24,7 +24,7 @@ namespace settings
 		float       attackTurnSeconds = 0.60f;
 		bool        faceWhileHeld = false;
 		bool        faceWhileLockedOn = true;   // Ultimate Combat Redux's lock-on: the body faces the camera (its dodge needs it)
-		float       bodyTurnSpeed = 0.0f;   // 0 = the game's own rotation rate
+		float       bodyTurnPercent = 100.0f;   // the game's own turn speed scaled (its rotation-speed curve), 100 = the game's
 		bool        compassFollowsCamera = true;
 		bool        freeCameraOnHorse = false;
 		bool        standDownInDialogue = true;
@@ -60,13 +60,22 @@ namespace settings
 		std::int32_t aimPointDownKey = 0;      // on the controller the right stick up / down does it ([LockOn] bStickAimPoint)
 		std::int32_t aimPointUpButton = 0;
 		std::int32_t aimPointDownButton = 0;
+		std::int32_t prevTargetKey = 0x2C;     // Z / X: previous / next target while locked, Ultimate Combat's keyboard defaults
+		std::int32_t nextTargetKey = 0x2D;     // (the controller's are the right stick left / right, [LockOn] bStickSwitch)
+		std::int32_t prevTargetButton = 0;
+		std::int32_t nextTargetButton = 0;
 
 		// [LockOn] - CCM's own target lock-on (1.0.1; our own design, nothing taken from Ultimate Combat's)
 		bool  lockOnEnabled = true;
-		float lockOnRange = 2000.0f;     // game units from the character (about 70 to a metre), 500-5000
-		float lockOnAngle = 40.0f;       // degrees either side of the camera's aim a target is taken in, 5-90
-		float lockOnTurnTime = 0.15f;    // seconds for the camera to come most of the way round (an exponential ease), 0 = at once
-		float lockOnLookDown = 8.0f;     // degrees the view tilts down from the target's chest, 0-30
+		float lockOnRange = 3000.0f;     // Unreal units (100 to a metre) - Ultimate Combat's Target Range
+		float lockOnAngle = 40.0f;       // degrees from the camera's yaw a target is searched in - its Target Search Angle
+		float lockOnSwapAngle = 55.0f;   // degrees to the side a target switch looks - its Target Switch Angle
+		float lockOnSmoothSpeed = 0.75f; // its Camera Tracking Speed (a share of the difference each tick, capped by its turn rates)
+		float lockOnSwitchCooldown = 0.20f;  // its Target Switch Delay, seconds
+		bool  lockOnLineOfSight = true;  // the target must be in sight (three failed checks 0.4 s apart release)
+		bool  lockOnCancelOnSheathe = true;  // its Release When Sheathing
+		bool  lockOnWeaponsDrawnOnly = false; // its Require Weapon Drawn
+		bool  lockOnPlaySound = true;    // its lock / release / switch sounds
 		bool  lockOnStickSwitch = true;  // a flick of the right stick moves the lock to the next target that side
 		bool  lockOnMarker = true;       // the target's name drawn over it while locked
 		std::int32_t lockOnStartPart = 2;  // the body part a lock starts on: 1 Head, 2 Spine, 3 Pelvis (Ultimate Combat's names and default)

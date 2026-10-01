@@ -48,7 +48,7 @@ namespace game
 	Snapshot Status();
 
 	// Actions from keys, the page and ccm.drive - queued, applied on the next game tick.
-	enum class Action { kShoulderSwap, kCycleStyle, kToggle, kUnstick, kNextPreset, kLockOn, kAimPointUp, kAimPointDown };
+	enum class Action { kShoulderSwap, kCycleStyle, kToggle, kUnstick, kNextPreset, kLockOn, kAimPointUp, kAimPointDown, kPrevTarget, kNextTarget };
 	void Queue(Action a_action);
 	void NotePageDrawn();   // the AMF page drew this frame: CCM's keys stay quiet while its menu is open
 
@@ -58,6 +58,7 @@ namespace game
 	// does with it. 0 when no pad is connected or no reader exists; a_ok false then.
 	WORD        PadButtons(bool* a_ok = nullptr);
 	bool        PadRightStick(float& a_x, float& a_y);   // the right stick, -1..1 each (right +, up +); false with no pad
+	bool        ActionWindowActive();   // within 0.6 s of an attack press or release (Ultimate Combat's ActionGuard window)
 	std::string PadName(std::int32_t a_mask);   // "A", "LB", "D-pad up", "Left stick click (LS)"... or "none"
 	std::string KeyName(std::int32_t a_scan);   // the keyboard's own name for a DirectInput scan code, or "none"
 }

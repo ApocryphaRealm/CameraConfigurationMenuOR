@@ -154,10 +154,12 @@ namespace game
 			const bool lock = KeyPressedEdge(a_s.lockOnKey);
 			const bool up = KeyPressedEdge(a_s.aimPointUpKey);
 			const bool down = KeyPressedEdge(a_s.aimPointDownKey);
+			const bool prev = KeyPressedEdge(a_s.prevTargetKey);
+			const bool nextT = KeyPressedEdge(a_s.nextTargetKey);
 			// the controller: read only when a button is bound at all (no pad read every tick for nothing)
-			bool padSwap = false, padCycle = false, padToggle = false, padNext = false, padLock = false, padUp = false, padDown = false;
+			bool padSwap = false, padCycle = false, padToggle = false, padNext = false, padLock = false, padUp = false, padDown = false, padPrev = false, padNextT = false;
 			if (a_s.shoulderSwapButton > 0 || a_s.cycleStyleButton > 0 || a_s.toggleButton > 0 || a_s.nextPresetButton > 0 || a_s.lockOnButton > 0 ||
-				a_s.aimPointUpButton > 0 || a_s.aimPointDownButton > 0) {
+				a_s.aimPointUpButton > 0 || a_s.aimPointDownButton > 0 || a_s.prevTargetButton > 0 || a_s.nextTargetButton > 0) {
 				const WORD pad = PadButtons();
 				padSwap = PadPressedEdge(a_s.shoulderSwapButton, pad);
 				padCycle = PadPressedEdge(a_s.cycleStyleButton, pad);
@@ -166,6 +168,8 @@ namespace game
 				padLock = PadPressedEdge(a_s.lockOnButton, pad);
 				padUp = PadPressedEdge(a_s.aimPointUpButton, pad);
 				padDown = PadPressedEdge(a_s.aimPointDownButton, pad);
+				padPrev = PadPressedEdge(a_s.prevTargetButton, pad);
+				padNextT = PadPressedEdge(a_s.nextTargetButton, pad);
 				g_padPrev = pad;
 			}
 			if (quiet) return;
@@ -176,6 +180,8 @@ namespace game
 			if (lock || padLock) Queue(Action::kLockOn);
 			if (up || padUp) Queue(Action::kAimPointUp);
 			if (down || padDown) Queue(Action::kAimPointDown);
+			if (prev || padPrev) Queue(Action::kPrevTarget);
+			if (nextT || padNextT) Queue(Action::kNextTarget);
 			if (padSwap || padCycle || padToggle || padNext || padLock) {
 				logger::debug("keys: controller {} - {}", PadName(static_cast<std::int32_t>(g_padPrev)),
 					padSwap ? "shoulder swap" : padCycle ? "camera style" : padToggle ? "CCM on/off" : padNext ? "next preset" : "lock-on");
@@ -217,68 +223,67 @@ namespace game
 			g_lockUntil = 0.0;
 		}
 
-		// [General] fBodyTurnSpeed (the owner, 2026-10-01: "I want the player's body to turn faster. With the free camera"):
-		// the movement component's RotationRate.Yaw - what both turning toward where you move (bOrientRotationToMovement)
-		// and turning to face the camera (bUseControllerDesiredRotation) use. The game sets its own per state (420.9 walking
-		// free, 720 facing the camera - read live), so it is written every tick while the free camera runs in third person;
-		// a value that is not ours is the game's new one, kept to put back when the setting stops applying.
-		// Round 2 (the owner, 2026-10-01: "I don't seem to notice any kind of change in the turn speed"): the pawn derives
-		// RotationRate from Curve_PlayerRotationSpeed_Float every frame (VPairedPawn bUseRotationSpeedCurve = true - 200 /
-		// 421 / 477 / 596 / 720 by state and speed, read live), and that write came before the movement's rotation, ours
-		// after it. While the setting applies the pawn's curve is switched off (its own value recorded and put back on
-		// every path that puts the rate back), so the rate written here is the one the movement uses.
+		// [General] fBodyTurnPercent (the owner, 2026-10-01: "I want the player's body to turn faster. With the free camera").
+		// Round 3 (the owner: "it seems to make the turn speed worse the higher I set it"): the player pawn derives the
+		// movement's RotationRate every frame from Curve_PlayerRotationSpeed_Float (two linear keys, read in game: 200 deg/s at
+		// 1, 600 deg/s at 180), BEFORE the movement turns the body - the earlier rounds wrote RotationRate after it (seen in
+		// the read-back only) and switched the curve off, which pinned the game at 200 deg/s whatever the slider said (sampled
+		// turning: at most 287 deg/s with the setting at 1435, 592 deg/s with the game's own). So the curve itself is scaled:
+		// each key's Value (FRichCurveKey +0x8, 28 bytes a key) is the game's value times the percent while the free camera runs
+		// in third person, and the game's values go back otherwise. The curve is the player's own (its name says so).
 		struct BodyTurn
 		{
-			UE::UObject* move = nullptr;   // the component it was applied to (a load brings a new one)
-			bool         applied = false;
-			double       game = 0.0;       // the game's own yaw rate, last seen
-			double       ours = 0.0;
-			bool         curveGame = true; // the pawn's own bUseRotationSpeedCurve, recorded when the setting began applying
-			double       logged = -1.0;    // the rate last named in the log
-			ULONGLONG    loggedAt = 0;
+			ue::Handle         curve;
+			std::vector<float> game;          // the curve's own key values, read before any change
+			float              applied = 1.0f;
+			ULONGLONG          loggedAt = 0;
 		} g_bodyTurn;
 
-		void ApplyBodyTurn(const Objects& o, bool a_on, float a_speed)
+		struct KeyArray
 		{
-			if (o.move != g_bodyTurn.move) g_bodyTurn = { .move = o.move };
-			if (!o.move) return;
-			const auto& p = Find(o.move, "RotationRate");
-			auto        r = GetVec(o.move, p);   // FRotator: pitch, yaw, roll
-			const auto& curve = o.pawn ? Find(o.pawn, "bUseRotationSpeedCurve") : Find(o.move, "bUseRotationSpeedCurve");
-			if (a_on && a_speed > 0.0f) {
-				if (!g_bodyTurn.applied && o.pawn) {
-					g_bodyTurn.curveGame = GetBool(o.pawn, curve);
-				}
-				if (o.pawn && GetBool(o.pawn, curve)) SetBool(o.pawn, curve, false);
-				if (!g_bodyTurn.applied || std::abs(r[1] - g_bodyTurn.ours) > 0.01) {
-					if (!g_bodyTurn.applied || std::abs(r[1] - g_bodyTurn.game) > 0.01) logger::debug("body turn: the game's own rate is {:.1f} degrees/s", r[1]);
-					g_bodyTurn.game = r[1];
-				}
-				if (std::abs(r[1] - a_speed) > 0.01) {
-					r[1] = a_speed;
-					SetVec(o.move, p, r);
-				}
-				// named in the log when it changes, once it has held a second (a slider being dragged logs once)
-				const ULONGLONG nowMs = GetTickCount64();
-				if (std::abs(a_speed - g_bodyTurn.ours) > 0.01) g_bodyTurn.loggedAt = nowMs;
-				if (std::abs(a_speed - g_bodyTurn.logged) > 0.01 && nowMs - g_bodyTurn.loggedAt >= 1000) {
-					logger::info("body turn: {:.0f} degrees/s (the game's {:.1f}; its rotation curve {} - off while this applies; read back {:.1f})", a_speed,
-						g_bodyTurn.game, g_bodyTurn.curveGame ? "on" : "off", GetVec(o.move, p)[1]);
-					g_bodyTurn.logged = a_speed;
-				}
-				g_bodyTurn.ours = a_speed;
-				g_bodyTurn.applied = true;
-			} else if (g_bodyTurn.applied) {
-				if (std::abs(r[1] - g_bodyTurn.ours) <= 0.01) {   // still ours: the game's own back (else the game has set its own)
-					r[1] = g_bodyTurn.game;
-					SetVec(o.move, p, r);
-				}
-				if (o.pawn) SetBool(o.pawn, curve, g_bodyTurn.curveGame);   // the pawn's curve back as it was
-				logger::info("body turn: the game's own rate again ({:.1f} degrees/s, its rotation curve {})", g_bodyTurn.game, g_bodyTurn.curveGame ? "on" : "off");
-				g_bodyTurn.applied = false;
-				g_bodyTurn.logged = -1.0;
+			std::uint8_t* data;
+			std::int32_t  num, max;
+		};
+
+		void SetCurveScale(UE::UObject* a_curve, float a_scale)
+		{
+			const auto& keys = Find(a_curve, "FloatCurve.Keys");
+			if (!keys.Ok()) return;
+			auto* arr = reinterpret_cast<KeyArray*>(reinterpret_cast<std::uint8_t*>(a_curve) + keys.offset);
+			if (!arr->data || arr->num <= 0 || arr->num > 64) return;
+			constexpr std::size_t kStride = 28, kValue = 8;
+			if (g_bodyTurn.game.empty()) {
+				for (std::int32_t i = 0; i < arr->num; ++i) g_bodyTurn.game.push_back(*reinterpret_cast<float*>(arr->data + i * kStride + kValue));
+				std::string vals;
+				for (const float v : g_bodyTurn.game) vals += std::format("{}{:.0f}", vals.empty() ? "" : ", ", v);
+				logger::info("body turn: the game's turn-speed curve has {} key(s): {} deg/s", arr->num, vals);
+			}
+			if (static_cast<std::size_t>(arr->num) != g_bodyTurn.game.size()) return;   // not the curve read before: leave it
+			for (std::int32_t i = 0; i < arr->num; ++i) *reinterpret_cast<float*>(arr->data + i * kStride + kValue) = g_bodyTurn.game[static_cast<std::size_t>(i)] * a_scale;
+			g_bodyTurn.applied = a_scale;
+		}
+
+		void ApplyBodyTurn(const Objects& o, bool a_on, float a_percent)
+		{
+			auto* curve = o.pawn ? GetObject(o.pawn, Find(o.pawn, "RotationSpeedCurve")) : nullptr;
+			if (curve != g_bodyTurn.curve.Get()) {
+				if (auto* old = g_bodyTurn.curve.Get(); old && g_bodyTurn.applied != 1.0f) SetCurveScale(old, 1.0f);
+				g_bodyTurn = {};
+				if (curve) g_bodyTurn.curve.Set(curve);
+			}
+			if (!curve) return;
+			const float want = a_on && a_percent > 0.0f ? a_percent / 100.0f : 1.0f;
+			if (std::abs(want - g_bodyTurn.applied) < 1e-4f) return;
+			SetCurveScale(curve, want);
+			const ULONGLONG nowMs = GetTickCount64();
+			if (want == 1.0f || nowMs - g_bodyTurn.loggedAt >= 1000) {
+				g_bodyTurn.loggedAt = nowMs;
+				logger::info("body turn: {:.0f}% of the game's turn speed{}", want * 100.0f, want == 1.0f ? " (the game's own)" : "");
 			}
 		}
+
+		// Ultimate Combat's action window (ActionGuard: 0.6 s after an attack press or release): the lock-on turns slower in it
+		double g_actionWindowUntil = 0.0;
 
 		void RunActions(const Objects& o, settings::Values& a_s)
 		{
@@ -314,6 +319,12 @@ namespace game
 					break;
 				case Action::kAimPointDown:
 					lockon::MoveAimPoint(1);
+					break;
+				case Action::kPrevTarget:
+					lockon::MoveTarget(-1);
+					break;
+				case Action::kNextTarget:
+					lockon::MoveTarget(1);
 					break;
 				case Action::kUnstick:
 					RestoreVanilla(o, "unstick");
@@ -498,7 +509,7 @@ namespace game
 				}
 				g_wroteSwitches = true;
 			}
-			ApplyBodyTurn(o, styleFree && !firstPerson && o.arm && o.move, s.bodyTurnSpeed);
+			ApplyBodyTurn(o, styleFree && !firstPerson && o.arm && o.move, s.bodyTurnPercent);
 			StartZoomedOut(a_pawn, o.ctrl, s);
 			camrows::Tick(s.enabled, g_shoulderLeft);   // Aiming a bow, in the game's own camera table
 			shake::Update(s.enabled && !s.smSprintShake);   // "Screen shake while sprinting" off = the sprint shakes silenced
@@ -616,10 +627,12 @@ namespace game
 				g_held = true;
 				g_lockUntil = std::max(g_lockUntil, g_clock + s.blockTurnSeconds);
 			} else if (a_fn == g_fnAttackPressed) {
+				g_actionWindowUntil = Seconds() + 0.6;
 				++g_attackEvents;
 				g_held = true;
 				g_lockUntil = std::max(g_lockUntil, g_clock + s.attackTurnSeconds);
 			} else if (a_fn == g_fnBlockReleased || a_fn == g_fnAttackReleased) {
+				if (a_fn == g_fnAttackReleased) g_actionWindowUntil = Seconds() + 0.6;
 				g_held = false;
 				// Player Camera frees the body the moment block or attack is released; only a spell outlasts its button
 				if (!s.faceWhileHeld) g_lockUntil = 0.0;
@@ -793,6 +806,8 @@ namespace game
 		a_y = std::clamp(static_cast<float>(st.Gamepad.sThumbRY) / 32767.0f, -1.0f, 1.0f);
 		return true;
 	}
+
+	bool ActionWindowActive() { return Seconds() < g_actionWindowUntil; }
 
 	std::string PadName(std::int32_t a_mask)
 	{

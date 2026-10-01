@@ -88,17 +88,18 @@ namespace page
 			std::string message;
 		};
 		Capture g_cap;
-		constexpr int kBindRows = 7;
+		constexpr int kBindRows = 9;
 
 		std::int32_t* KeyOf(settings::Values& a_s, int a_row)
 		{
-			std::int32_t* rows[kBindRows] = { &a_s.shoulderSwapKey, &a_s.cycleStyleKey, &a_s.toggleKey, &a_s.nextPresetKey, &a_s.lockOnKey, &a_s.aimPointUpKey, &a_s.aimPointDownKey };
+			std::int32_t* rows[kBindRows] = { &a_s.shoulderSwapKey, &a_s.cycleStyleKey, &a_s.toggleKey, &a_s.nextPresetKey, &a_s.lockOnKey, &a_s.aimPointUpKey, &a_s.aimPointDownKey,
+				&a_s.prevTargetKey, &a_s.nextTargetKey };
 			return rows[std::clamp(a_row, 0, kBindRows - 1)];
 		}
 		std::int32_t* PadOf(settings::Values& a_s, int a_row)
 		{
 			std::int32_t* rows[kBindRows] = { &a_s.shoulderSwapButton, &a_s.cycleStyleButton, &a_s.toggleButton, &a_s.nextPresetButton, &a_s.lockOnButton,
-				&a_s.aimPointUpButton, &a_s.aimPointDownButton };
+				&a_s.aimPointUpButton, &a_s.aimPointDownButton, &a_s.prevTargetButton, &a_s.nextTargetButton };
 			return rows[std::clamp(a_row, 0, kBindRows - 1)];
 		}
 
@@ -200,7 +201,8 @@ namespace page
 			}
 			const char* actions[kBindRows] = { TR("BindShoulder", "Move the camera to the other shoulder"), TR("BindCycle", "Switch the free camera style"),
 				TR("BindToggle", "Turn CCM on or off"), TR("BindNextPreset", "Load the next preset"), TR("BindLockOn", "Lock on to a target, and let go"),
-				TR("BindAimUp", "Aim point up (Pelvis, Spine, Head)"), TR("BindAimDown", "Aim point down (Head, Spine, Pelvis)") };
+				TR("BindAimUp", "Aim point up (Pelvis, Spine, Head)"), TR("BindAimDown", "Aim point down (Head, Spine, Pelvis)"),
+				TR("BindPrevTarget", "Previous target"), TR("BindNextTarget", "Next target") };
 			const bool can = AMF::HasKeyCapture();
 			if (ImGui::BeginTable("##ccmbinds", 3, ImGuiTableFlags_SizingStretchProp)) {
 				ImGui::TableSetupColumn("action", ImGuiTableColumnFlags_WidthStretch, 1.6f);
@@ -270,9 +272,8 @@ namespace page
 			if (Switch(TR("FaceWhileHeld", "Keep facing while block or attack is held"), &s.faceWhileHeld)) Changed();
 			ImGui::EndDisabled();
 			ImGui::BeginDisabled(s.cameraStyle == 0);
-			if (precise::SliderFloat(TR("BodyTurnSpeed", "How fast your character turns"), &s.bodyTurnSpeed, 0.0f, 1440.0f,
-					s.bodyTurnSpeed <= 0.0f ? TR("GameValue", "the game's") : "%.0f degrees/s")) Changed();
-			Hint(TR("BodyTurnSpeedHint", "With the free camera in third person: how quickly your character turns toward where you move and to face the camera. Far left = the game's own speed."));
+			if (precise::SliderFloat(TR("BodyTurnSpeed", "How fast your character turns"), &s.bodyTurnPercent, 50.0f, 400.0f, "%.0f%%")) Changed();
+			Hint(TR("BodyTurnPercentHint", "With the free camera in third person: how quickly your character turns toward where you move and to face the camera, in percent of the game's own speed. 100% = the game's."));
 			ImGui::EndDisabled();
 			ImGui::BeginDisabled(s.cameraStyle == 0);
 			if (Switch(TR("FaceWhileLockedOn", "Face the camera while Ultimate Combat is locked on"), &s.faceWhileLockedOn)) Changed();
@@ -290,10 +291,16 @@ namespace page
 			if (Switch(TR("LockOnEnabled", "Lock on to a target"), &s.lockOnEnabled)) Changed();
 			Hint(TR("LockOnHint", "Press the lock key (below) to lock the camera on to the person or creature nearest where you look - one fighting you first. Press it again to let go."));
 			ImGui::BeginDisabled(!s.lockOnEnabled);
-			if (precise::SliderFloat(TR("LockOnRange", "Range"), &s.lockOnRange, 500.0f, 5000.0f, "%.0f")) Changed();
+			if (precise::SliderFloat(TR("LockOnRange", "Range"), &s.lockOnRange, 500.0f, 10000.0f, "%.0f")) Changed();
 			if (precise::SliderFloat(TR("LockOnAngle", "Angle"), &s.lockOnAngle, 5.0f, 90.0f, "%.0f degrees")) Changed();
-			if (precise::SliderFloat(TR("LockOnTurnTime", "Turn time (seconds)"), &s.lockOnTurnTime, 0.0f, 1.0f, "%.2f")) Changed();
-			if (precise::SliderFloat(TR("LockOnLookDown", "Look down"), &s.lockOnLookDown, 0.0f, 30.0f, "%.0f degrees")) Changed();
+			if (precise::SliderFloat(TR("LockOnSwitchAngle", "Target switch angle"), &s.lockOnSwapAngle, 5.0f, 180.0f, "%.0f degrees")) Changed();
+			if (precise::SliderFloat(TR("LockOnTrackingSpeed", "Camera tracking speed"), &s.lockOnSmoothSpeed, 0.01f, 1.0f, "%.2f")) Changed();
+			Hint(TR("LockOnTrackingSpeedHint", "How quickly the camera turns to follow a locked target. Higher is snappier."));
+			if (precise::SliderFloat(TR("LockOnSwitchDelay", "Target switch delay (seconds)"), &s.lockOnSwitchCooldown, 0.0f, 1.0f, "%.2f")) Changed();
+			if (Switch(TR("LockOnLineOfSight", "Only targets in sight"), &s.lockOnLineOfSight)) Changed();
+			if (Switch(TR("LockOnSheathe", "Release when sheathing"), &s.lockOnCancelOnSheathe)) Changed();
+			if (Switch(TR("LockOnDrawnOnly", "Require weapon drawn"), &s.lockOnWeaponsDrawnOnly)) Changed();
+			if (Switch(TR("LockOnSound", "Lock-on sounds"), &s.lockOnPlaySound)) Changed();
 			if (Switch(TR("LockOnStickSwitch", "Flick the right stick to switch target"), &s.lockOnStickSwitch)) Changed();
 			{
 				const char* parts[3] = { TR("PartHead", "Head"), TR("PartSpine", "Spine"), TR("PartPelvis", "Pelvis") };

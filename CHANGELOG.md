@@ -7,6 +7,28 @@ in `git log`. A version number is issued by the version gate only once a build i
 
 Two of the 1.0.0 page's known issues, at the owner's request (relayed 2026-10-01: "CCM 1.0.1, your mod").
 
+### Changed
+- **The lock-on is now a port of Ultimate Combat Redux's** (the owner, 2026-10-01, after the own-design lock-on aimed
+  low: "This should be simple to fix since you already have a working example. Literally just copy it over and add
+  the toggle for auto pointing at the head with the bow and the chest for melee weapons"). From LockOn.lua (Kramer7046's
+  Ultimate Combat 2.7): the targets (every BP_PairedPawnAIController_C pawn, alive, within GetDistanceTo range, within
+  the search angle of the camera's yaw, in line of sight, the smallest yaw difference), the instant toggle (0.35 s
+  debounce), the camera drive (the arm frozen on engage; FindLookAtRotation from the camera to the socket, stepped by
+  the tracking speed capped at 300 / 180 deg/s - 210 / 135 and at most 0.35 in the 0.6 s after an attack - pitch
+  clamped to 75, written to ControlRotation and the arm), the release checks every 0.4 s (dead, three line-of-sight
+  failures, range x 1.1), three ticks with no aim point, a bad camera origin, first person, sheathing, the target switch
+  (switch angle, nearest that side, 0.20 s apart, the body part kept) and the sounds. Its settings and keys are
+  Ultimate Combat's, with its descriptions: Range 3000 (Unreal units), Search angle 40, Switch angle 55, Tracking speed
+  0.75, Switch delay 0.20, line of sight, release when sheathing, require weapon drawn, sounds; Z / X previous / next
+  target ([Keys] iPrevTargetKey / iNextTargetKey). Gone: CCM's own pick, ease, Turn time and Look down. Kept: the
+  key rows (Left Alt / R3), Aim point by weapon (ours), the marker, the stand-down for Ultimate Combat's own lock-on.
+- **Body turn is a percentage of the game's own turn speed** ([General] fBodyTurnPercent, 100 = the game's; replaces
+  fBodyTurnSpeed). Round 3 (the owner: "it seems to make the turn speed worse the higher I set it"): sampled turning
+  showed at most 287 deg/s with the setting at 1435 against 592 deg/s with the game's own - switching the pawn's
+  rotation-speed curve off pinned the game at 200 deg/s, and CCM's RotationRate write landed after the movement had
+  turned. The curve (Curve_PlayerRotationSpeed_Float: 200 deg/s at 1, 600 at 180) is now scaled in place, its two key
+  values times the percent, and put back when the setting stops applying.
+
 ### Added
 - **Lock-on body parts, as Ultimate Combat names them** (the owner, 2026-10-01: "Make sure we use the same word for word
   stuff as UCR does so that you can target different skeleton nodes" - this part follows Kramer7046's Ultimate Combat;

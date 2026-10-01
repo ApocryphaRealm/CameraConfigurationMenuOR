@@ -33,6 +33,7 @@ namespace lockon
 
 	void Toggle();               // the lock key (game thread, from game::RunActions)
 	void MoveAimPoint(int a_dir); // -1 up a body part, +1 down (the aim-point keys; game thread)
+	void MoveTarget(int a_dir);   // -1 the previous target, +1 the next (the target keys; game thread)
 	void Tick(const In& a_in);   // every player tick (game thread)
 	bool Active();               // a target is locked: the body faces the camera
 	bool UltimateCombatOwnsIt(); // Ultimate Combat's own lock-on is switched on in its INI: CCM's stands down

@@ -71,6 +71,8 @@ CREDITS
 -------
   The conversation camera holds on the speaker the way Ultimate Combat's lock-on holds a target (Kramer7046's
   Ultimate Combat, whose permissions allow modification with credit).
+  Body-part aim points (Head / Spine / Pelvis) follow Ultimate Combat by Kramer7046, whose permissions allow
+  modification with credit. The rest of CCM's lock-on is its own design.
 
 LICENCE
 -------

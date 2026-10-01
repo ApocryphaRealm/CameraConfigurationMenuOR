@@ -3,7 +3,10 @@
 Written as changes happen, not reconstructed afterwards (rule 61). Started 2026-09-29; the history before this file is
 in `git log`. A version number is issued by the version gate only once a build is seen working in game (rule 48).
 
-## Unreleased - 2026-10-01 - untested (built, not run)
+## 1.0.1 - 2026-10-01 - working
+
+Confirmed by the owner in game on 0ab34ee (DLL sha1 bfde9ef6622d): the lock-on with all its releases and aim point by
+weapon, Bow stays on the head ("ucr feature works"), body turn at 175%.
 
 Two of the 1.0.0 page's known issues, at the owner's request (relayed 2026-10-01: "CCM 1.0.1, your mod").
 

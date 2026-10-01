@@ -1,6 +1,6 @@
 Camera Configuration Menu (CCM)
 ===============================
-Version 1.0.0
+Version 1.0.1
 
 Set up Oblivion Remastered's third-person camera from a settings page in Apocrypha Menu Framework: where the
 camera sits in every situation, a free camera that lets you look around your character, a conversation camera,

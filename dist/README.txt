@@ -18,7 +18,7 @@ WHAT YOU GET
   * Zoom: start at the far zoom after loading, or replace the game's two zoom distances.
   * Smoothing: new positions slide in on a chosen curve; how tightly the camera follows movement, looking up
     and down and turning; the sprint screen shake on or off; the blend between the game's camera states.
-  * Third-person selection (Better Third-Person Selection, merged in): Activate uses what you are roughly
+  * Third-person selection: Activate uses what you are roughly
     looking at, within reach and angle, closest to the aim first, with its name shown where it stands.
   * Contextual crosshair: the game's crosshair, hidden, or shown only while a bow is drawn or a spell is cast,
     while there is something to activate, while a weapon is drawn, or always in first person.
@@ -34,7 +34,6 @@ KNOWN ISSUES
   * Keys and controller buttons are set in the INI (scan codes and XInput masks); there is no binding row on the
     page yet. Two keys ship bound: [ (shoulder swap) and ] (switch the free camera style). No controller button
     ships bound - every button already has a game action.
-  * Do not install Better Third-Person Selection beside CCM - it is merged in.
 
 INSTALLATION
 ------------

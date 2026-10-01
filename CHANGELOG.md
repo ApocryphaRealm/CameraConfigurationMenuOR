@@ -3,6 +3,34 @@
 Written as changes happen, not reconstructed afterwards (rule 61). Started 2026-09-29; the history before this file is
 in `git log`. A version number is issued by the version gate only once a build is seen working in game (rule 48).
 
+## Unreleased - 2026-10-01 - untested (built, not run)
+
+Two of the 1.0.0 page's known issues, at the owner's request (relayed 2026-10-01: "CCM 1.0.1, your mod").
+
+### Added
+- **Press-to-bind rows** for the three actions CCM performs - move the camera to the other shoulder, switch the free
+  camera style, turn CCM on or off - each with a keyboard key and a controller button, on the Camera tab (the standing
+  rule: a listener that takes ANY controller button, never an INI mask only). Through the framework's key capture
+  (AMF 1.0.2+; older frameworks get a note and the INI still works). Refused, with the reason, and the capture armed
+  again for the next press: a key the framework uses, Tab (the game's quick keys), Minimap Menu's default K and L
+  (.MD\DEFAULT-KEYS.md), and a key or button already on another CCM action. A Clear button per binding and a Cancel
+  button while waiting.
+- **The controller is read** for those three buttons - 1.0.0 had the INI masks but never read a pad. From the game's own
+  XInput module (never loaded by CCM, never through the game's import slot); quiet in menus (menuMode != 1), while the
+  framework's window is up (AMF_IsMenuOpen) and while CCM's page drew in the last 250 ms. Nothing is taken from the
+  game: a bound button also does what the game does with it. Still no button ships bound.
+
+### Fixed
+- **The crosshair while aiming a bow** (1.0.0's known issue). The crosshair image's material, MIC_CrossHair_SneakEye
+  (read from the paks with uetex --params), draws the ranged reticle by its BowDrawAlpha scalar, which defaults to 0 -
+  so the reticle stayed invisible while a bow was drawn whatever opacity CCM gave the image. While CCM shows the
+  crosshair for a drawn bow, BowDrawAlpha is held at 1, only when the material says ranged (IsMelee? 0), and the game's
+  value is put back afterwards. Logged: "crosshair: the image's material is ...", "bow reticle raised".
+
+### Changed
+- The framework header (include/AMF.h) updated from the framework's SDK (key capture, IsMenuOpen).
+- Translations: the 22 new strings in the ten languages; the retired keys hint removed.
+
 ## 1.0.0 - 2026-10-01 - working
 
 ### Release (2026-10-01)

@@ -143,9 +143,84 @@ namespace crosshair
 			c.Run();
 		}
 
+		// ---- the bow reticle (1.0.1) ----
+		// The crosshair image's material is MIC_CrossHair_SneakEye (read from the paks with uetex --params, 2026-10-01):
+		// scalars IsMelee? (1 melee, 0 ranged), SneakCurrentTime, DetectionAlpha and BowDrawAlpha, which defaults to 0. In
+		// ranged mode the reticle is drawn by BowDrawAlpha, so with it at 0 the crosshair stayed invisible while a bow was
+		// aimed whatever opacity CCM gave the image (the 1.0.0 known issue; e87a279 had only fixed the opacity side). While
+		// CCM shows the crosshair for a drawn bow, BowDrawAlpha is held at 1 - only when the material says ranged, so a
+		// melee weapon's crosshair is never touched - and the game's own value is put back afterwards.
+		ue::Handle g_mid;
+		bool       g_bowRaised = false;
+		float      g_bowGame = 0.0f;
+		bool       g_midLogged = false;
+
+		const UE::FName& Param(const wchar_t* a_name)
+		{
+			static std::vector<std::pair<const wchar_t*, UE::FName>> s_names;
+			for (const auto& [n, f] : s_names) {
+				if (n == a_name) return f;
+			}
+			s_names.emplace_back(a_name, UE::FName(a_name, UE::EFindName::Add));
+			return s_names.back().second;
+		}
+
+		UE::UObject* Mid(UE::UObject* a_img)
+		{
+			if (auto* m = g_mid.Get()) return m;
+			ue::Call c(a_img, L"GetDynamicMaterial");
+			if (!c || !c.Run()) return nullptr;
+			auto* m = c.Get<UE::UObject*>("ReturnValue");
+			if (!m || !ue::IsLive(m)) return nullptr;
+			g_mid.Set(m);
+			if (!g_midLogged) {
+				g_midLogged = true;
+				logger::info("crosshair: the image's material is {} - the bow reticle reads its IsMelee? and BowDrawAlpha", ue::NameOf(m));
+			}
+			return m;
+		}
+
+		float GetScalar(UE::UObject* a_mid, const wchar_t* a_name, float a_fallback)
+		{
+			ue::Call c(a_mid, L"K2_GetScalarParameterValue");
+			if (!c || !c.Set("ParameterName", Param(a_name)) || !c.Run()) return a_fallback;
+			return c.Get<float>("ReturnValue");
+		}
+
+		void SetScalar(UE::UObject* a_mid, const wchar_t* a_name, float a_value)
+		{
+			ue::Call c(a_mid, L"SetScalarParameterValue");
+			if (!c || !c.Set("ParameterName", Param(a_name))) return;
+			c.Set("Value", a_value);
+			c.Run();
+		}
+
+		// a_raise: CCM is showing the crosshair for a drawn bow this tick
+		void BowReticle(UE::UObject* a_img, bool a_raise)
+		{
+			if (!a_raise && !g_bowRaised) return;
+			auto* mid = a_img ? Mid(a_img) : nullptr;
+			if (!mid) return;
+			if (a_raise) {
+				if (GetScalar(mid, L"IsMelee?", 1.0f) > 0.5f) return;   // a melee crosshair: nothing to raise
+				const float cur = GetScalar(mid, L"BowDrawAlpha", 0.0f);
+				if (!g_bowRaised) {
+					g_bowGame = cur;
+					g_bowRaised = true;
+					logger::info("crosshair: bow reticle raised (the game had BowDrawAlpha {:.2f})", cur);
+				}
+				if (cur < 0.99f) SetScalar(mid, L"BowDrawAlpha", 1.0f);   // the game may write it back: held each tick
+			} else {
+				SetScalar(mid, L"BowDrawAlpha", g_bowGame);
+				g_bowRaised = false;
+				logger::debug("crosshair: bow reticle back to the game's {:.2f}", g_bowGame);
+			}
+		}
+
 		// give the crosshair back to the game: its own opacity put back once
 		void Release(UE::UObject* a_img, const char* a_why)
 		{
+			BowReticle(a_img, false);
 			if (g_controlling && a_img) {
 				SetOpacity(a_img, g_gameOpacity);
 				logger::debug("crosshair: back to the game ({})", a_why);
@@ -209,6 +284,7 @@ namespace crosshair
 			g_now = Opacity(img);
 			g_controlling = true;
 		}
+		BowReticle(img, show && bow);   // only while the crosshair is shown for a drawn bow (ranged material only - see BowReticle)
 		const float target01 = show ? g_gameOpacity : 0.0f;
 		const float dt = g_lastTick ? std::min(0.1f, static_cast<float>(now - g_lastTick) / 1000.0f) : 0.0f;
 		g_lastTick = now;

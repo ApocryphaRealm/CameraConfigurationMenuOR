@@ -74,6 +74,171 @@ namespace page
 			return true;
 		}
 
+		// ---- press-to-bind (1.0.1; the owner's standing rule: a controller button is bound with a listener that takes
+		// ANY button, never an INI mask only). AMF's key capture (1.0.2+) arms the next press on one side and keeps it
+		// from the menu and the game. A key the framework itself uses, Tab (the game's quick keys), a default of another
+		// of our Oblivion Remastered mods (Minimap Menu's K and L, .MD\DEFAULT-KEYS.md) and a key or button already on
+		// another CCM action are refused with the reason, and the capture is armed again for the next press.
+		struct Capture
+		{
+			int         row = -1;      // 0 shoulder swap, 1 camera style, 2 CCM on/off; -1 none
+			bool        pad = false;
+			int         phase = 0;     // pad: 1 = waiting for every button to be let go (the A that pressed Bind), 2 = armed
+			std::string message;
+		};
+		Capture g_cap;
+
+		std::int32_t* KeyOf(settings::Values& a_s, int a_row)
+		{
+			return a_row == 0 ? &a_s.shoulderSwapKey : a_row == 1 ? &a_s.cycleStyleKey : &a_s.toggleKey;
+		}
+		std::int32_t* PadOf(settings::Values& a_s, int a_row)
+		{
+			return a_row == 0 ? &a_s.shoulderSwapButton : a_row == 1 ? &a_s.cycleStyleButton : &a_s.toggleButton;
+		}
+
+		void StartCapture(int a_row, bool a_pad)
+		{
+			AMF::CancelKeyCapture();
+			g_cap.row = a_row;
+			g_cap.pad = a_pad;
+			if (a_pad) {
+				g_cap.phase = 1;
+				g_cap.message = TR("BindLetGo", "Let go of every button, then press the new one.");
+			} else {
+				g_cap.phase = 2;
+				AMF::BeginKeyCapture(false, 8000);
+				g_cap.message = TR("BindPressKey", "Press a key (Escape cancels).");
+			}
+			logger::info("keys: capturing the next {} for row {}", a_pad ? "controller button" : "key", a_row);
+		}
+
+		void EndCapture(std::string a_message)
+		{
+			g_cap.row = -1;
+			g_cap.phase = 0;
+			g_cap.message = std::move(a_message);
+		}
+
+		// the reason a_code cannot go on row a_row (empty = it can)
+		std::string Refusal(settings::Values& a_s, int a_row, bool a_pad, std::int32_t a_code)
+		{
+			for (int r = 0; r < 3; ++r) {
+				if (r != a_row && (a_pad ? *PadOf(a_s, r) : *KeyOf(a_s, r)) == a_code) {
+					return TR("BindRefuseOther", "another CCM action already uses it");
+				}
+			}
+			if (a_pad) return {};
+			std::int32_t reserved[32]{};
+			const auto   n = AMF::ReservedKeys(reserved, 32);
+			for (std::uint32_t i = 0; i < n && i < 32; ++i) {
+				if (reserved[i] == a_code) return TR("BindRefuseFramework", "the menu framework uses it");
+			}
+			if (a_code == 15) return TR("BindRefuseTab", "Tab opens the game's quick keys");
+			if (a_code == 37 || a_code == 38) return TR("BindRefuseMinimap", "Minimap Menu uses it by default");
+			return {};
+		}
+
+		void PollCapture(settings::Values& a_s)
+		{
+			if (g_cap.row < 0) return;
+			if (g_cap.pad && g_cap.phase == 1) {
+				bool       ok = false;
+				const WORD held = game::PadButtons(&ok);
+				if (!ok || held == 0) {   // everything let go (or no pad to read): the next press is the new button
+					AMF::BeginKeyCapture(true, 8000);
+					g_cap.phase = 2;
+					g_cap.message = TR("BindPressButton", "Press a controller button.");
+				}
+				return;
+			}
+			std::int32_t kind = 0, code = 0;
+			switch (AMF::PollKeyCapture(&kind, &code)) {
+			case AMF::CaptureState::kCaptured: {
+				const bool wanted = g_cap.pad ? kind == 2 && code > 0 && code <= 0xFFFF : kind == 0 && code > 0 && code <= 255;
+				if (!wanted) {
+					g_cap.message = g_cap.pad ? TR("BindNotButton", "A stick, a trigger or a key cannot be bound here - press a controller button.")
+					                          : TR("BindNotKey", "Only a keyboard key can be bound here - press a key.");
+					AMF::BeginKeyCapture(g_cap.pad, 8000);
+					return;
+				}
+				const std::string why = Refusal(a_s, g_cap.row, g_cap.pad, code);
+				const std::string name = g_cap.pad ? game::PadName(code) : game::KeyName(code);
+				if (!why.empty()) {
+					g_cap.message = std::format("{}: {} - {}", name, TR("BindRefused", "cannot be bound"), why);
+					logger::info("keys: {} refused for row {} - {}", name, g_cap.row, why);
+					AMF::BeginKeyCapture(g_cap.pad, 8000);   // armed again for the next press
+					return;
+				}
+				*(g_cap.pad ? PadOf(a_s, g_cap.row) : KeyOf(a_s, g_cap.row)) = code;
+				Changed();
+				logger::info("keys: row {} {} is now {} ({})", g_cap.row, g_cap.pad ? "button" : "key", name, code);
+				EndCapture(std::format("{} {}", name, TR("BindDone", "bound")));
+				return;
+			}
+			case AMF::CaptureState::kCancelled:
+			case AMF::CaptureState::kTimedOut:
+				EndCapture(TR("BindNothing", "Nothing pressed - nothing changed."));
+				return;
+			case AMF::CaptureState::kIdle:
+				EndCapture({});   // the framework dropped it (its menu closed)
+				return;
+			default:
+				return;
+			}
+		}
+
+		void DrawBindings(settings::Values& a_s)
+		{
+			if (!AMF::HasKeyCapture()) {
+				Hint(TR("BindOldFramework", "Binding here needs Apocrypha Menu Framework 1.0.2 or newer. The keys and buttons can still be set in CameraConfigurationMenu.ini."));
+			}
+			const char* actions[3] = { TR("BindShoulder", "Move the camera to the other shoulder"), TR("BindCycle", "Switch the free camera style"),
+				TR("BindToggle", "Turn CCM on or off") };
+			const bool can = AMF::HasKeyCapture();
+			if (ImGui::BeginTable("##ccmbinds", 3, ImGuiTableFlags_SizingStretchProp)) {
+				ImGui::TableSetupColumn("action", ImGuiTableColumnFlags_WidthStretch, 1.6f);
+				ImGui::TableSetupColumn("key", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+				ImGui::TableSetupColumn("pad", ImGuiTableColumnFlags_WidthStretch, 1.2f);
+				for (int r = 0; r < 3; ++r) {
+					ImGui::PushID(r);
+					ImGui::TableNextRow();
+					ImGui::TableNextColumn();
+					ImGui::AlignTextToFramePadding();
+					ImGui::TextUnformatted(actions[r]);
+					for (int side = 0; side < 2; ++side) {
+						const bool pad = side == 1;
+						ImGui::TableNextColumn();
+						ImGui::PushID(side);
+						const bool  waiting = g_cap.row == r && g_cap.pad == pad;
+						std::string label = waiting ? std::string(TR("BindWaiting", "Waiting...")) :
+						                    pad ? std::format("{}: {}", TR("BindController", "Controller"), game::PadName(*PadOf(a_s, r))) :
+						                          std::format("{}: {}", TR("BindKey", "Key"), game::KeyName(*KeyOf(a_s, r)));
+						ImGui::BeginDisabled(!can || (g_cap.row >= 0 && !waiting));
+						if (ImGui::Button(label.c_str()) && !waiting) StartCapture(r, pad);
+						ImGui::EndDisabled();
+						ImGui::SameLine();
+						ImGui::BeginDisabled(g_cap.row >= 0 || (pad ? *PadOf(a_s, r) : *KeyOf(a_s, r)) == 0);
+						if (ImGui::SmallButton(TR("BindClear", "Clear"))) {
+							*(pad ? PadOf(a_s, r) : KeyOf(a_s, r)) = 0;
+							Changed();
+						}
+						ImGui::EndDisabled();
+						ImGui::PopID();
+					}
+					ImGui::PopID();
+				}
+				ImGui::EndTable();
+			}
+			if (g_cap.row >= 0 && ImGui::Button(TR("BindCancel", "Cancel binding"))) {
+				AMF::CancelKeyCapture();
+				EndCapture(TR("BindNothing", "Nothing pressed - nothing changed."));
+			}
+			Hint(g_cap.message.empty() ? TR("BindHint", "Select a key or controller button, then press the new one. A controller button also keeps what the game does with it.")
+			                          : g_cap.message.c_str());
+			PollCapture(a_s);
+		}
+
 		void DrawCamera()
 		{
 			if (!Begin()) return;
@@ -108,7 +273,7 @@ namespace page
 			ImGui::EndDisabled();
 
 			ImGui::SeparatorText(TR("SectionKeys", "Keys"));
-			Hint(TR("KeysHint", "[ moves the camera to the other shoulder. ] switches between the two free camera styles."));
+			DrawBindings(s);
 
 			ImGui::Spacing();
 			if (ImGui::Button(TR("Unstick", "Put the game's camera back now"))) game::Queue(game::Action::kUnstick);

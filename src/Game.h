@@ -51,4 +51,12 @@ namespace game
 	enum class Action { kShoulderSwap, kCycleStyle, kToggle, kUnstick };
 	void Queue(Action a_action);
 	void NotePageDrawn();   // the AMF page drew this frame: CCM's keys stay quiet while its menu is open
+
+	// The controller (1.0.1): read from the XInput function the game itself loaded - never LoadLibrary (a plugin that
+	// loads an XInput DLL kills the controller, logic library 7178) and never through the game's import slot (another
+	// plugin's controller rules would run twice). Nothing is taken from the game: a bound button also does what the game
+	// does with it. 0 when no pad is connected or no reader exists; a_ok false then.
+	WORD        PadButtons(bool* a_ok = nullptr);
+	std::string PadName(std::int32_t a_mask);   // "A", "LB", "D-pad up", "Left stick click (LS)"... or "none"
+	std::string KeyName(std::int32_t a_scan);   // the keyboard's own name for a DirectInput scan code, or "none"
 }

@@ -1,5 +1,9 @@
 #include "Game.h"
 
+#include <Xinput.h>   // types and constants only - nothing is linked or loaded
+
+#include "AMF.h"
+
 #include "Compass.h"
 #include "CameraRows.h"
 #include "Conversation.h"
@@ -125,18 +129,43 @@ namespace game
 			return edge;
 		}
 
+		// a bound controller button newly pressed this tick: every bit of its mask held now, not all held last tick
+		WORD g_padPrev = 0;
+		bool PadPressedEdge(std::int32_t a_mask, WORD a_now)
+		{
+			if (a_mask <= 0 || a_mask > 0xFFFF) return false;
+			const WORD m = static_cast<WORD>(a_mask);
+			return (a_now & m) == m && (g_padPrev & m) != m;
+		}
+
 		void ReadKeys(const settings::Values& a_s)
 		{
-			// Quiet while the game is not in front or CCM's own page drew in the last 250 ms (AMF's menu is open).
+			// Quiet while the game is not in front, a game menu is open (menuMode != 1 - the pad's buttons navigate it),
+			// the framework's window is up (AMF 1.0.5+), or CCM's own page drew in the last 250 ms.
 			const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now().time_since_epoch()).count();
-			const bool quiet = !GameInFront() || now - g_pageDrawnAt.load(std::memory_order_relaxed) < 250;
+			auto* im = RE::InterfaceManager::GetInstance(false, false);
+			const bool quiet = !GameInFront() || !im || im->menuMode != 1 || AMF::IsMenuOpen() ||
+			                   now - g_pageDrawnAt.load(std::memory_order_relaxed) < 250;
 			const bool swap = KeyPressedEdge(a_s.shoulderSwapKey);
 			const bool cycle = KeyPressedEdge(a_s.cycleStyleKey);
 			const bool toggle = KeyPressedEdge(a_s.toggleKey);
+			// the controller: read only when a button is bound at all (no pad read every tick for nothing)
+			bool padSwap = false, padCycle = false, padToggle = false;
+			if (a_s.shoulderSwapButton > 0 || a_s.cycleStyleButton > 0 || a_s.toggleButton > 0) {
+				const WORD pad = PadButtons();
+				padSwap = PadPressedEdge(a_s.shoulderSwapButton, pad);
+				padCycle = PadPressedEdge(a_s.cycleStyleButton, pad);
+				padToggle = PadPressedEdge(a_s.toggleButton, pad);
+				g_padPrev = pad;
+			}
 			if (quiet) return;
-			if (swap) Queue(Action::kShoulderSwap);
-			if (cycle) Queue(Action::kCycleStyle);
-			if (toggle) Queue(Action::kToggle);
+			if (swap || padSwap) Queue(Action::kShoulderSwap);
+			if (cycle || padCycle) Queue(Action::kCycleStyle);
+			if (toggle || padToggle) Queue(Action::kToggle);
+			if (padSwap || padCycle || padToggle) {
+				logger::debug("keys: controller {} - {}", PadName(static_cast<std::int32_t>(g_padPrev)),
+					padSwap ? "shoulder swap" : padCycle ? "camera style" : "CCM on/off");
+			}
 		}
 
 		struct Objects
@@ -625,5 +654,55 @@ namespace game
 	void NotePageDrawn()
 	{
 		g_pageDrawnAt.store(std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now().time_since_epoch()).count(), std::memory_order_relaxed);
+	}
+	WORD PadButtons(bool* a_ok)
+	{
+		using XInputGetState_t = DWORD(WINAPI*)(DWORD, XINPUT_STATE*);
+		static XInputGetState_t s_fn = nullptr;
+		static std::once_flag   s_once;
+		std::call_once(s_once, [] {
+			for (const wchar_t* dll : { L"XINPUT1_3.dll", L"xinput1_4.dll", L"XINPUT9_1_0.dll" }) {
+				if (HMODULE m = ::GetModuleHandleW(dll)) {
+					s_fn = reinterpret_cast<XInputGetState_t>(::GetProcAddress(m, "XInputGetState"));
+					if (s_fn) {
+						logger::info("keys: the controller is read from the game's own XInput module");
+						return;
+					}
+				}
+			}
+			logger::warn("keys: no XInput module is loaded by the game - controller buttons cannot be read");
+		});
+		XINPUT_STATE st{};
+		const bool   ok = s_fn && s_fn(0, &st) == ERROR_SUCCESS;
+		if (a_ok) *a_ok = ok;
+		return ok ? st.Gamepad.wButtons : 0;
+	}
+
+	std::string PadName(std::int32_t a_mask)
+	{
+		static constexpr std::pair<WORD, const char*> kNames[] = {
+			{ XINPUT_GAMEPAD_A, "A" }, { XINPUT_GAMEPAD_B, "B" }, { XINPUT_GAMEPAD_X, "X" }, { XINPUT_GAMEPAD_Y, "Y" },
+			{ XINPUT_GAMEPAD_LEFT_SHOULDER, "LB" }, { XINPUT_GAMEPAD_RIGHT_SHOULDER, "RB" },
+			{ XINPUT_GAMEPAD_LEFT_THUMB, "Left stick click (LS)" }, { XINPUT_GAMEPAD_RIGHT_THUMB, "Right stick click (RS)" },
+			{ XINPUT_GAMEPAD_DPAD_UP, "D-pad up" }, { XINPUT_GAMEPAD_DPAD_DOWN, "D-pad down" },
+			{ XINPUT_GAMEPAD_DPAD_LEFT, "D-pad left" }, { XINPUT_GAMEPAD_DPAD_RIGHT, "D-pad right" },
+			{ XINPUT_GAMEPAD_BACK, "Back" }, { XINPUT_GAMEPAD_START, "Start" },
+		};
+		for (const auto& [bit, name] : kNames) {
+			if (static_cast<WORD>(a_mask) == bit) return name;
+		}
+		return a_mask > 0 ? std::format("button 0x{:04X}", a_mask) : "none";
+	}
+
+	std::string KeyName(std::int32_t a_scan)
+	{
+		if (a_scan <= 0 || a_scan > 255) return "none";
+		const LONG lp = static_cast<LONG>((a_scan & 0x7F) << 16) | (a_scan >= 0x80 ? (1 << 24) : 0);
+		wchar_t    buf[64]{};
+		const int  n = ::GetKeyNameTextW(lp, buf, 64);
+		if (n <= 0) return std::format("key {}", a_scan);
+		std::string out;
+		for (int i = 0; i < n; ++i) out.push_back(buf[i] < 0x80 ? static_cast<char>(buf[i]) : '?');
+		return out;
 	}
 }

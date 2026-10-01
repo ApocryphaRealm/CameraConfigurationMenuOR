@@ -36,7 +36,7 @@ WHAT YOU GET
 
 KNOWN ISSUES
 ------------
-  * The crosshair can stay hidden while aiming a bow (the game hides it while drawing). Being worked on.
+  * None known in 1.0.1. The bow crosshair that could stay hidden while aiming is fixed.
 
 INSTALLATION
 ------------

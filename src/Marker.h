@@ -19,5 +19,9 @@ namespace marker
 	// a_ref: what to mark, or nullptr to hide it
 	void Show(RE::TESObjectREFR* a_ref);
 
+	// The lock-on's target (1.0.1): marked in a warm colour, and while it is set the selection's Show calls are ignored -
+	// one marker on screen, the lock's. nullptr hands the marker back to the selection.
+	void Lock(RE::TESObjectREFR* a_ref);
+
 	json State();   // any thread
 }

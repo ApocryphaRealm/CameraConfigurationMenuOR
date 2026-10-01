@@ -48,7 +48,7 @@ namespace game
 	Snapshot Status();
 
 	// Actions from keys, the page and ccm.drive - queued, applied on the next game tick.
-	enum class Action { kShoulderSwap, kCycleStyle, kToggle, kUnstick, kNextPreset };
+	enum class Action { kShoulderSwap, kCycleStyle, kToggle, kUnstick, kNextPreset, kLockOn };
 	void Queue(Action a_action);
 	void NotePageDrawn();   // the AMF page drew this frame: CCM's keys stay quiet while its menu is open
 
@@ -57,6 +57,7 @@ namespace game
 	// plugin's controller rules would run twice). Nothing is taken from the game: a bound button also does what the game
 	// does with it. 0 when no pad is connected or no reader exists; a_ok false then.
 	WORD        PadButtons(bool* a_ok = nullptr);
+	bool        PadRightX(float& a_x);   // the right stick's left-right, -1..1 (right +); false with no pad
 	std::string PadName(std::int32_t a_mask);   // "A", "LB", "D-pad up", "Left stick click (LS)"... or "none"
 	std::string KeyName(std::int32_t a_scan);   // the keyboard's own name for a DirectInput scan code, or "none"
 }

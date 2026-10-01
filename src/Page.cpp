@@ -4,6 +4,7 @@
 
 #include "AMF.h"
 #include "PreciseSlider.h"
+#include "LockOn.h"
 #include "Crosshair.h"
 #include "Conversation.h"
 #include "Framing.h"
@@ -87,15 +88,15 @@ namespace page
 			std::string message;
 		};
 		Capture g_cap;
-		constexpr int kBindRows = 4;
+		constexpr int kBindRows = 5;
 
 		std::int32_t* KeyOf(settings::Values& a_s, int a_row)
 		{
-			return a_row == 0 ? &a_s.shoulderSwapKey : a_row == 1 ? &a_s.cycleStyleKey : a_row == 2 ? &a_s.toggleKey : &a_s.nextPresetKey;
+			return a_row == 0 ? &a_s.shoulderSwapKey : a_row == 1 ? &a_s.cycleStyleKey : a_row == 2 ? &a_s.toggleKey : a_row == 3 ? &a_s.nextPresetKey : &a_s.lockOnKey;
 		}
 		std::int32_t* PadOf(settings::Values& a_s, int a_row)
 		{
-			return a_row == 0 ? &a_s.shoulderSwapButton : a_row == 1 ? &a_s.cycleStyleButton : a_row == 2 ? &a_s.toggleButton : &a_s.nextPresetButton;
+			return a_row == 0 ? &a_s.shoulderSwapButton : a_row == 1 ? &a_s.cycleStyleButton : a_row == 2 ? &a_s.toggleButton : a_row == 3 ? &a_s.nextPresetButton : &a_s.lockOnButton;
 		}
 
 		void StartCapture(int a_row, bool a_pad)
@@ -195,7 +196,7 @@ namespace page
 				Hint(TR("BindOldFramework", "Binding here needs Apocrypha Menu Framework 1.0.2 or newer. The keys and buttons can still be set in CameraConfigurationMenu.ini."));
 			}
 			const char* actions[kBindRows] = { TR("BindShoulder", "Move the camera to the other shoulder"), TR("BindCycle", "Switch the free camera style"),
-				TR("BindToggle", "Turn CCM on or off"), TR("BindNextPreset", "Load the next preset") };
+				TR("BindToggle", "Turn CCM on or off"), TR("BindNextPreset", "Load the next preset"), TR("BindLockOn", "Lock on to a target, and let go") };
 			const bool can = AMF::HasKeyCapture();
 			if (ImGui::BeginTable("##ccmbinds", 3, ImGuiTableFlags_SizingStretchProp)) {
 				ImGui::TableSetupColumn("action", ImGuiTableColumnFlags_WidthStretch, 1.6f);
@@ -272,6 +273,22 @@ namespace page
 			if (Switch(TR("VanityCamera", "The idle camera that circles you"), &s.vanityCamera)) Changed();
 			Hint(TR("VanityCameraHint", "Off: the camera never starts circling your character when you stand idle for a while."));
 			ImGui::EndDisabled();
+
+			ImGui::SeparatorText(TR("SectionLockOn", "Lock-on"));
+			if (lockon::UltimateCombatOwnsIt()) {
+				Hint(TR("LockOnUcrOwns", "Ultimate Combat's own lock-on is switched on in its settings, so it locks on instead and CCM's lock-on stands down. Switch Ultimate Combat's off to use this one."));
+			}
+			if (Switch(TR("LockOnEnabled", "Lock on to a target"), &s.lockOnEnabled)) Changed();
+			Hint(TR("LockOnHint", "Press the lock key (below) to lock the camera on to the person or creature nearest where you look - one fighting you first. Press it again to let go."));
+			ImGui::BeginDisabled(!s.lockOnEnabled);
+			if (precise::SliderFloat(TR("LockOnRange", "Range"), &s.lockOnRange, 500.0f, 5000.0f, "%.0f")) Changed();
+			if (precise::SliderFloat(TR("LockOnAngle", "Angle"), &s.lockOnAngle, 5.0f, 90.0f, "%.0f degrees")) Changed();
+			if (precise::SliderFloat(TR("LockOnTurnTime", "Turn time (seconds)"), &s.lockOnTurnTime, 0.0f, 1.0f, "%.2f")) Changed();
+			if (precise::SliderFloat(TR("LockOnLookDown", "Look down"), &s.lockOnLookDown, 0.0f, 30.0f, "%.0f degrees")) Changed();
+			if (Switch(TR("LockOnStickSwitch", "Flick the right stick to switch target"), &s.lockOnStickSwitch)) Changed();
+			if (Switch(TR("LockOnMarker", "Show the target's name"), &s.lockOnMarker)) Changed();
+			ImGui::EndDisabled();
+			Hint(lockon::Status().c_str());
 
 			ImGui::SeparatorText(TR("SectionKeys", "Keys"));
 			DrawBindings(s);

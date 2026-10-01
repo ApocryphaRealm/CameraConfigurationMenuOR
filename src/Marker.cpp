@@ -15,6 +15,8 @@ namespace marker
 
 		ue::Handle   g_root, g_label, g_slot;   // kept across frames: checked by their object-array slots
 		bool         g_shown = false;
+		bool         g_locking = false;   // the lock-on owns the marker
+		bool         g_warm = false;      // the label's colour is the lock's
 		std::wstring g_text;
 		double       g_x = -1, g_y = -1;
 		ULONGLONG    g_lastBuild = 0;
@@ -65,6 +67,7 @@ namespace marker
 				std::uint8_t rule;   // ESlateColorStylingMode: 0 = the colour given
 				std::uint8_t pad[7];
 			} white{ { 1.0f, 1.0f, 1.0f, 1.0f }, 0, {} };
+			if (g_warm) white = { { 1.0f, 0.62f, 0.28f, 1.0f }, 0, {} };   // the lock-on's target: a warm amber
 			// the prefab's own SetColor (what Tween Menu colours these labels with, proven in game) and the text block's
 			const bool bp = CallFirst(a_label, L"SetColor", &white, sizeof(white));
 			const bool native = CallFirst(a_label, L"SetColorAndOpacity", &white, sizeof(white));
@@ -264,7 +267,32 @@ namespace marker
 		}
 	}
 
+	namespace
+	{
+		void Mark(RE::TESObjectREFR* a_ref);
+	}
+
 	void Show(RE::TESObjectREFR* a_ref)
+	{
+		if (g_locking) return;   // the lock-on's target is marked instead
+		Mark(a_ref);
+	}
+
+	void Lock(RE::TESObjectREFR* a_ref)
+	{
+		const bool warm = a_ref != nullptr;
+		if (!warm && !g_locking) return;   // nothing of the lock's to take down: the selection keeps its marker
+		g_locking = warm;
+		if (warm != g_warm) {
+			g_warm = warm;
+			if (auto* label = g_label.Get()) ApplyColour(label);
+		}
+		Mark(a_ref);
+	}
+
+	namespace
+	{
+	void Mark(RE::TESObjectREFR* a_ref)
 	{
 		if (!a_ref) {
 			SetVisible(false);
@@ -299,7 +327,8 @@ namespace marker
 		}
 		SetVisible(true);
 		std::scoped_lock l(g_lock);
-		g_marking = std::format("{} at ({:.0f}, {:.0f})", n && *n ? n : "(no name)", x, y);
+		g_marking = std::format("{}{} at ({:.0f}, {:.0f})", g_locking ? "locked on: " : "", n && *n ? n : "(no name)", x, y);
+	}
 	}
 
 	json State()

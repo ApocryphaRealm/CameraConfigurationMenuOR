@@ -8,6 +8,7 @@
 #include "CameraRows.h"
 #include "Conversation.h"
 #include "Framing.h"
+#include "LockOn.h"
 #include "Shake.h"
 #include "PEHook.h"
 #include "Reflect.h"
@@ -150,14 +151,16 @@ namespace game
 			const bool cycle = KeyPressedEdge(a_s.cycleStyleKey);
 			const bool toggle = KeyPressedEdge(a_s.toggleKey);
 			const bool next = KeyPressedEdge(a_s.nextPresetKey);
+			const bool lock = KeyPressedEdge(a_s.lockOnKey);
 			// the controller: read only when a button is bound at all (no pad read every tick for nothing)
-			bool padSwap = false, padCycle = false, padToggle = false, padNext = false;
-			if (a_s.shoulderSwapButton > 0 || a_s.cycleStyleButton > 0 || a_s.toggleButton > 0 || a_s.nextPresetButton > 0) {
+			bool padSwap = false, padCycle = false, padToggle = false, padNext = false, padLock = false;
+			if (a_s.shoulderSwapButton > 0 || a_s.cycleStyleButton > 0 || a_s.toggleButton > 0 || a_s.nextPresetButton > 0 || a_s.lockOnButton > 0) {
 				const WORD pad = PadButtons();
 				padSwap = PadPressedEdge(a_s.shoulderSwapButton, pad);
 				padCycle = PadPressedEdge(a_s.cycleStyleButton, pad);
 				padToggle = PadPressedEdge(a_s.toggleButton, pad);
 				padNext = PadPressedEdge(a_s.nextPresetButton, pad);
+				padLock = PadPressedEdge(a_s.lockOnButton, pad);
 				g_padPrev = pad;
 			}
 			if (quiet) return;
@@ -165,9 +168,10 @@ namespace game
 			if (cycle || padCycle) Queue(Action::kCycleStyle);
 			if (toggle || padToggle) Queue(Action::kToggle);
 			if (next || padNext) Queue(Action::kNextPreset);
-			if (padSwap || padCycle || padToggle || padNext) {
+			if (lock || padLock) Queue(Action::kLockOn);
+			if (padSwap || padCycle || padToggle || padNext || padLock) {
 				logger::debug("keys: controller {} - {}", PadName(static_cast<std::int32_t>(g_padPrev)),
-					padSwap ? "shoulder swap" : padCycle ? "camera style" : padToggle ? "CCM on/off" : "next preset");
+					padSwap ? "shoulder swap" : padCycle ? "camera style" : padToggle ? "CCM on/off" : padNext ? "next preset" : "lock-on");
 			}
 		}
 
@@ -231,6 +235,9 @@ namespace game
 					break;
 				case Action::kNextPreset:
 					if (const int s = settings::NextPreset(); s > 0) logger::info("next preset: slot {} ({})", s, settings::PresetName(s));
+					break;
+				case Action::kLockOn:
+					lockon::Toggle();   // taken up by lockon::Tick later this tick
 					break;
 				case Action::kUnstick:
 					RestoreVanilla(o, "unstick");
@@ -400,7 +407,9 @@ namespace game
 					WriteSwitches(o, { false, true, false, true });   // Player Camera's first-person values
 					mode = "first person";
 				} else {
-					const bool lockedOn = s.faceWhileLockedOn && UltimateCombatLockedOn();
+					// a lock-on - Ultimate Combat's (when the switch says so) or CCM's own (always): the body faces the camera, so
+					// the dodge goes where the player expects
+					const bool lockedOn = (s.faceWhileLockedOn && UltimateCombatLockedOn()) || lockon::Active();
 					if (s.cameraStyle == 1) {
 						attacking = CallBool(a_pawn, g_fnIsAttacking).value_or(false);
 						locked = lockedOn || attacking || g_clock < g_lockUntil || (s.faceWhileHeld && g_held);
@@ -427,6 +436,9 @@ namespace game
 			// the compass follows the camera while the free camera is on in third person (UCR's CompassBridge does the same)
 			compass::Update(o.ctrl, s.enabled && styleFree && !firstPerson && s.compassFollowsCamera && o.arm && o.move);
 			conversation::Tick(o.ctrl, o.mgr, o.arm, tag);   // first person in conversations, and the aim held on the speaker
+			// CCM's own lock-on: after the switches and the framing, so its ControlRotation is the last word this tick
+			lockon::Tick({ .pawn = a_pawn, .ctrl = o.ctrl, .mgr = o.mgr, .firstPerson = firstPerson, .cameraTag = &tag, .dt = dt,
+				.ucrLocked = UltimateCombatLockedOn() });
 
 			// [General] bVanityCamera = 0: the idle camera that circles the player never starts - the camera manager's
 			// vanity timer is stopped (once a second, not every frame: input restarts it), and a vanity camera already
@@ -682,6 +694,26 @@ namespace game
 		const bool   ok = s_fn && s_fn(0, &st) == ERROR_SUCCESS;
 		if (a_ok) *a_ok = ok;
 		return ok ? st.Gamepad.wButtons : 0;
+	}
+
+	bool PadRightX(float& a_x)
+	{
+		using XInputGetState_t = DWORD(WINAPI*)(DWORD, XINPUT_STATE*);
+		static XInputGetState_t s_fn = nullptr;
+		static bool             s_looked = false;
+		if (!s_looked) {   // the same module PadButtons reads (the game's own XInput)
+			s_looked = true;
+			for (const wchar_t* dll : { L"XINPUT1_3.dll", L"xinput1_4.dll", L"XINPUT9_1_0.dll" }) {
+				if (HMODULE m = ::GetModuleHandleW(dll)) {
+					s_fn = reinterpret_cast<XInputGetState_t>(::GetProcAddress(m, "XInputGetState"));
+					if (s_fn) break;
+				}
+			}
+		}
+		XINPUT_STATE st{};
+		if (!s_fn || s_fn(0, &st) != ERROR_SUCCESS) return false;
+		a_x = std::clamp(static_cast<float>(st.Gamepad.sThumbRX) / 32767.0f, -1.0f, 1.0f);
+		return true;
 	}
 
 	std::string PadName(std::int32_t a_mask)

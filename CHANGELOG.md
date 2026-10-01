@@ -8,6 +8,21 @@ in `git log`. A version number is issued by the version gate only once a build i
 Two of the 1.0.0 page's known issues, at the owner's request (relayed 2026-10-01: "CCM 1.0.1, your mod").
 
 ### Added
+- **CCM's own target lock-on** (the owner, 2026-09-30: CCM owns target lock-on, "our own design, no credit"; 2026-10-01:
+  build it and release it before Ultimate Combat Redux 1.0.1 ships with its lock-on off). The lock key - Left Alt and
+  R3 by default, a press-to-bind row on the Camera tab - takes the best target in a cone ahead of the camera (a hostile
+  fighting you first, then the nearest the middle of the view, then the nearest) and lets go on the next press. While
+  locked, each player tick turns the controller's ControlRotation toward it: the yaw along the line from your
+  character to the target, the pitch from the camera to its chest tilted down by Look down, eased exponentially over
+  Turn time. A right-stick flick moves the lock to the next target that side. It lets go by itself when the target
+  dies or is gone, past the range plus a quarter, in first person, in a conversation, when CCM or the lock-on is
+  switched off, and when Ultimate Combat locks on. While locked the body faces the camera, as for Ultimate Combat's
+  lock. The target's name is drawn over it in amber (the selection marker, handed over while locked). If Ultimate
+  Combat's own lock-on is switched on in its INI (LockOnEnabled), CCM's stands down and the page says so. New [LockOn]
+  section (bEnabled, fRange 2000, fAngle 40, fTurnTime 0.15, fLookDown 8, bStickSwitch, bShowMarker) and [Keys]
+  iLockOnKey 56 / iLockOnButton 128 (.MD/DEFAULT-KEYS.md). Nothing in it is taken from Ultimate Combat's LockOn.lua;
+  the tuning numbers are first guesses, to be tuned in game. ccm.drive {op:"action", action:"lockOn"} presses the key;
+  ccm.status carries lock_on.
 - **Press-to-bind rows** for the three actions CCM performs - move the camera to the other shoulder, switch the free
   camera style, turn CCM on or off - each with a keyboard key and a controller button, on the Camera tab (the standing
   rule: a listener that takes ANY controller button, never an INI mask only). Through the framework's key capture

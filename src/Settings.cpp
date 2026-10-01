@@ -69,6 +69,7 @@ namespace settings
 			CCM_ROW("LockOn", "bStickSwitch", kBool, lockOnStickSwitch, 1, 0, 1, "1 = flick the right stick left or right to move the lock to the next target that side."),
 			CCM_ROW("LockOn", "bShowMarker", kBool, lockOnMarker, 1, 0, 1, "1 = the target's name is drawn over it while locked."),
 			CCM_ROW("LockOn", "iStartAimPoint", kInt, lockOnStartPart, 2, 1, 3, "The body part the camera aims at when a lock starts: 1 = Head, 2 = Spine, 3 = Pelvis. Default Spine."),
+			CCM_ROW("LockOn", "bBowStaysOnHead", kBool, lockOnBowHeadOnly, 0, 0, 1, "1 = with a bow the lock stays on the Head: the aim point up / down does not move it to the chest or pelvis. Melee and other weapons keep moving it."),
 			CCM_ROW("LockOn", "bAimPointByWeapon", kBool, lockOnAimByWeapon, 1, 0, 1, "1 = with a bow the lock aims at the Head, with a melee weapon at the Spine (the chest); anything else uses the starting aim point. A body part you choose holds until the next lock or weapon change."),
 			CCM_ROW("LockOn", "bStickAimPoint", kBool, lockOnStickAimPoint, 1, 0, 1, "1 = while locked on, the right stick up or down moves the aim point a body part."),
 			CCM_ROW("Framing.Standing", "fSide", kFloat, fmGroups[0].side, 0, -150, 150, "Centimetres added to the game's sideways camera offset: + moves the camera further right of your character (it mirrors with the shoulder swap). 0 = the game's. Standing is also used by every context below whose bOwn is 0."),

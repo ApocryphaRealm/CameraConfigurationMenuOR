@@ -74,6 +74,7 @@ namespace lockon
 		int         g_part = 1;
 		bool        g_partManual = false;
 		int         g_weaponKind = -1;
+		bool        g_bowHeadLogged = false;   // "stays on the head" said once per lock
 		bool        g_toggleQueued = false;
 		int         g_partQueued = 0;
 		int         g_targetQueued = 0;
@@ -370,6 +371,7 @@ namespace lockon
 			g_part = PartFor(a_kind, a_s);
 			g_partManual = false;
 			g_weaponKind = a_kind;
+			g_bowHeadLogged = false;
 			SetTarget(a_c.pawn, a_player);
 			g_locked = true;
 			g_lastCheck = Now();
@@ -582,6 +584,20 @@ namespace lockon
 					logger::info("lock-on: aim point {} - {}", SocketName(), WhyPart(kind, s));
 				}
 			}
+		}
+		// "Bow stays on the head" (the owner, 2026-10-01: "I want that toggle for the bow automatically targeting the head node to
+		// also prevent targeting the chest and pelvis nodes with the bow optionally"): with a bow the aim point is the Head and
+		// up / down do not move it; melee and other weapons keep cycling
+		if (s.lockOnBowHeadOnly && kind == 1) {
+			if (g_part != 0) {
+				g_part = 0;
+				PickSocket(target);
+			}
+			if (partMove != 0 && !g_bowHeadLogged) {
+				g_bowHeadLogged = true;
+				logger::info("lock-on: aim point stays on the head - bow");
+			}
+			partMove = 0;
 		}
 		// up or down a body part, wrapping round (up Pelvis -> Spine -> Head, down Head -> Spine -> Pelvis), 0.15 s apart
 		if (partMove != 0 && now - g_lastSwitchSocket >= kSocketCooldown) {

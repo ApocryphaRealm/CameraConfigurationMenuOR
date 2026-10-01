@@ -80,6 +80,7 @@ namespace settings
 		bool  lockOnMarker = true;       // the target's name drawn over it while locked
 		std::int32_t lockOnStartPart = 2;  // the body part a lock starts on: 1 Head, 2 Spine, 3 Pelvis (Ultimate Combat's names and default)
 		bool  lockOnAimByWeapon = true;  // a bow: Head; a melee weapon: Spine; anything else: the starting part (the owner, 2026-10-01)
+		bool  lockOnBowHeadOnly = false; // with a bow the aim point stays on the Head: up / down do not move it (the owner, 2026-10-01)
 		bool  lockOnStickAimPoint = true; // the right stick up / down moves the aim point a body part
 
 		// [Framing.<Context>] - where the camera sits, in centimetres ADDED to the game's own value for the state (plan

@@ -2701,6 +2701,30 @@ TABLE = {
         "Dźwięki namierzania",
         "Zvuky zaměření",
     ],
+    "LockOnBowHead": [
+        "弓では頭に固定",
+        "활은 머리에 고정",
+        "持弓时锁定头部",
+        "С луком только голова",
+        "Mit Bogen am Kopf bleiben",
+        "Arc : rester sur la tête",
+        "Con arco, quedarse en la cabeza",
+        "Con l'arco resta sulla testa",
+        "Z łukiem zostań na głowie",
+        "S lukem zůstat na hlavě",
+    ],
+    "LockOnBowHeadHint": [
+        "弓を持っているとき、照準部位は頭から動きません。上下に動かしても何も起きません。近接武器やその他の武器では動かせます。",
+        "활을 들고 있으면 조준 부위가 머리에서 움직이지 않습니다. 위아래로 옮겨도 아무 일도 없습니다. 근접 무기와 다른 무기는 여전히 옮길 수 있습니다.",
+        "持弓时，瞄准部位始终停在头部：上下移动不起作用。近战武器和其他武器仍可移动。",
+        "С луком точка прицела не покидает голову: движение вверх или вниз ничего не делает. С оружием ближнего боя и прочим её по-прежнему можно двигать.",
+        "Mit einem Bogen verlässt der Zielpunkt nie den Kopf: Hoch oder runter bewegt ihn nicht. Nahkampf- und andere Waffen verschieben ihn weiterhin.",
+        "Avec un arc, le point de visée ne quitte jamais la tête : le monter ou le descendre ne fait rien. Les armes de mêlée et les autres le déplacent toujours.",
+        "Con un arco, el punto de mira nunca deja la cabeza: subirlo o bajarlo no hace nada. Las armas cuerpo a cuerpo y las demás aún lo mueven.",
+        "Con un arco il punto di mira non lascia mai la testa: spostarlo in su o in giù non fa nulla. Le armi da mischia e le altre lo spostano ancora.",
+        "Z łukiem punkt celowania nigdy nie opuszcza głowy: przesuwanie w górę lub w dół nic nie robi. Broń biała i inna nadal go przesuwa.",
+        "S lukem bod zaměření nikdy neopustí hlavu: posun nahoru či dolů nic neudělá. Zbraně na blízko a ostatní jej stále posouvají.",
+    ],
 }
 
 for _family, _names in {

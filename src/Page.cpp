@@ -314,6 +314,8 @@ namespace page
 			}
 			if (Switch(TR("LockOnByWeapon", "Aim point by weapon"), &s.lockOnAimByWeapon)) Changed();
 			Hint(TR("LockOnByWeaponHint", "With a bow the lock aims at the Head, with a melee weapon at the Spine (the chest); anything else uses the starting aim point. A body part you choose holds until the next lock or weapon change."));
+			if (Switch(TR("LockOnBowHead", "Bow stays on the head"), &s.lockOnBowHeadOnly)) Changed();
+			Hint(TR("LockOnBowHeadHint", "With a bow, the aim point never leaves the head: moving it up or down does nothing. Melee and other weapons still move it."));
 			if (Switch(TR("LockOnStickPart", "Right stick up and down move the aim point"), &s.lockOnStickAimPoint)) Changed();
 			Hint(TR("LockOnStickPartHint", "While locked on, moves the aim point up a body part (Pelvis, Spine, Head) or down (Head, Spine, Pelvis)."));
 			if (Switch(TR("LockOnMarker", "Show the target's name"), &s.lockOnMarker)) Changed();

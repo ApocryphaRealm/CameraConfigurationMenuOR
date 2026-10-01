@@ -30,6 +30,10 @@ Two of the 1.0.0 page's known issues, at the owner's request (relayed 2026-10-01
   values times the percent, and put back when the setting stops applying.
 
 ### Added
+- **Bow stays on the head** ([LockOn] bBowStaysOnHead, off by default; the owner, 2026-10-01: "I want that toggle for
+  the bow automatically targeting the head node to also prevent targeting the chest and pelvis nodes with the bow
+  optionally"): with a bow held while locked, the aim point is the Head and the up / down moves (stick, keys, buttons)
+  are ignored - logged once per lock; melee and other weapons keep cycling.
 - **Lock-on body parts, as Ultimate Combat names them** (the owner, 2026-10-01: "Make sure we use the same word for word
   stuff as UCR does so that you can target different skeleton nodes" - this part follows Kramer7046's Ultimate Combat;
   the credit line's wording is being confirmed with the owner). The aim point is a socket on the target's skeleton:

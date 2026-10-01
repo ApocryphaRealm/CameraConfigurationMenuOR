@@ -88,7 +88,7 @@ namespace settings
 		float        smFollowSpeed = -1.0f;    // the arm's CameraLagSpeed, 0 = rigid (no position smoothing), -1 = the game's
 		float        smMaxLagDistance = -1.0f; // the arm's CameraLagMaxDistance, 0 = no limit
 		float        smRotationPitch = -1.0f;  // the arm's CameraRotationLagSpeedPitch, 0 = no rotation smoothing
-		float        smRotationYaw = -1.0f;    // the arm's CameraRotationLagSpeedYaw
+		float        smRotationYaw = 10.0f;    // the arm's CameraRotationLagSpeedYaw; 10 is the owner's (2026-10-01: "that's the new default")
 		bool         smSprintShake = true;     // "Screen shake while sprinting" (the owner's name): 1 = the game's shake, 0 = a steady camera
 		float        smStateBlendSeconds = -1.0f;   // TransitionDuration: the blend between the game's camera states
 

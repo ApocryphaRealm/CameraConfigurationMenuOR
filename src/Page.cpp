@@ -392,7 +392,7 @@ namespace page
 				const auto d = settings::Defaults();
 				std::ranges::copy(d.fmGroups, s.fmGroups);
 				s.smFollowSpeed = d.smFollowSpeed; s.smMaxLagDistance = d.smMaxLagDistance; s.smRotationPitch = d.smRotationPitch;
-				s.smRotationYaw = d.smRotationYaw; s.smStateBlendSeconds = d.smStateBlendSeconds;
+				s.smRotationYaw = -1.0f; s.smStateBlendSeconds = d.smStateBlendSeconds;   // the game's, as the button says (CCM's own default is 10)
 				s.ownZoomDistances = d.ownZoomDistances; s.zoomCloseDistance = d.zoomCloseDistance; s.zoomFarDistance = d.zoomFarDistance;
 				Changed();
 			}

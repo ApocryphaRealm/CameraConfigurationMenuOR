@@ -52,6 +52,10 @@ Two of the 1.0.0 page's known issues, at the owner's request (relayed 2026-10-01
   value is put back afterwards. Logged: "crosshair: the image's material is ...", "bow reticle raised".
 
 ### Changed
+- [Smoothing] fRotationSpeedYaw ("Follow turning left and right") defaults to 10, was -1 (the game's) - the owner,
+  2026-10-01, after setting it in game: "I just changed CCM's default value for follow turning left and right to 10.
+  So that's the new default." Compiled default and shipped INI alike (rule 16). The three built-in presets and "Use the
+  game's position and smoothing" still set -1, as they say.
 - The framework header (include/AMF.h) updated from the framework's SDK (key capture, IsMenuOpen).
 - Translations: the 22 new strings in the ten languages; the retired keys hint removed.
 

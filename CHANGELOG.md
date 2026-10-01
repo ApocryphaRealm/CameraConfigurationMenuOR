@@ -8,6 +8,8 @@ in `git log`. A version number is issued by the version gate only once a build i
 Two of the 1.0.0 page's known issues, at the owner's request (relayed 2026-10-01: "CCM 1.0.1, your mod").
 
 ### Changed
+- [General] fBodyTurnPercent defaults to 175 (the owner, 2026-10-01, after trying 101-198% in game: "I definitely prefer
+  the 150 to 200% turn speed range. Maybe set the default to 175."). Compiled default and shipped INI alike (rule 16).
 - **The lock-on is now a port of Ultimate Combat Redux's** (the owner, 2026-10-01, after the own-design lock-on aimed
   low: "This should be simple to fix since you already have a working example. Literally just copy it over and add
   the toggle for auto pointing at the head with the bow and the chest for melee weapons"). From LockOn.lua (Kramer7046's

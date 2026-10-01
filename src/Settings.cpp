@@ -24,7 +24,7 @@ namespace settings
 			CCM_ROW("General", "fAttackTurnSeconds", kFloat, attackTurnSeconds, 0.60, 0, 3, "Seconds the body keeps facing the camera after an attack or bow shot starts."),
 			CCM_ROW("General", "bFaceWhileHeld", kBool, faceWhileHeld, 0, 0, 1, "1 = keep facing the camera for as long as block or the attack button is held."),
 			CCM_ROW("General", "bFaceWhileLockedOn", kBool, faceWhileLockedOn, 1, 0, 1, "1 = while Ultimate Combat is locked on to a target, no free camera: the body faces where the camera looks (the dodge directions need it)."),
-			CCM_ROW("General", "fBodyTurnPercent", kFloat, bodyTurnPercent, 100, 50, 400, "How fast your character turns in third person with the free camera, in percent of the game's own turn speed (toward where you move and to face the camera). 100 = the game's."),
+			CCM_ROW("General", "fBodyTurnPercent", kFloat, bodyTurnPercent, 175, 50, 400, "How fast your character turns in third person with the free camera, in percent of the game's own turn speed (toward where you move and to face the camera). 100 = the game's."),
 			CCM_ROW("General", "bCompassFollowsCamera", kBool, compassFollowsCamera, 1, 0, 1, "1 = the compass shows where the camera looks, not where the body faces (free camera only)."),
 			CCM_ROW("General", "bFreeCameraOnHorse", kBool, freeCameraOnHorse, 0, 0, 1, "1 = the free camera also on horseback."),
 			CCM_ROW("General", "bStandDownInDialogue", kBool, standDownInDialogue, 1, 0, 1, "1 = the game's own camera during dialogue."),

@@ -24,7 +24,7 @@ namespace settings
 		float       attackTurnSeconds = 0.60f;
 		bool        faceWhileHeld = false;
 		bool        faceWhileLockedOn = true;   // Ultimate Combat Redux's lock-on: the body faces the camera (its dodge needs it)
-		float       bodyTurnPercent = 100.0f;   // the game's own turn speed scaled (its rotation-speed curve), 100 = the game's
+		float       bodyTurnPercent = 175.0f;   // the game's own turn speed scaled (its rotation-speed curve), 100 = the game's; 175 the owner's (2026-10-01)
 		bool        compassFollowsCamera = true;
 		bool        freeCameraOnHorse = false;
 		bool        standDownInDialogue = true;

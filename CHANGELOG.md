@@ -8,6 +8,18 @@ in `git log`. A version number is issued by the version gate only once a build i
 Two of the 1.0.0 page's known issues, at the owner's request (relayed 2026-10-01: "CCM 1.0.1, your mod").
 
 ### Added
+- **Lock-on body parts, as Ultimate Combat names them** (the owner, 2026-10-01: "Make sure we use the same word for word
+  stuff as UCR does so that you can target different skeleton nodes" - this part follows Kramer7046's Ultimate Combat;
+  the credit line's wording is being confirmed with the owner). The aim point is a socket on the target's skeleton:
+  Head_Socket / Spine_Socket / Pelvis_Socket, Root_Socket when the skeleton lacks it. [LockOn] iStartAimPoint ("The body
+  part the camera aims at when a lock starts", 1 Head / 2 Spine / 3 Pelvis, default Spine); while locked, the aim point
+  moves up a body part (Pelvis, Spine, Head) or down (Head, Spine, Pelvis), wrapping round - the right stick up / down
+  (bStickAimPoint) and two press-to-bind rows, unbound ([Keys] iAimPointUp/DownKey, iAimPointUp/DownButton). A switch to
+  another target keeps the body part.
+- **Aim point by weapon** ([LockOn] bAimPointByWeapon, on; the owner, 2026-10-01: "while using a bow, it automatically
+  targets the head, and while using a melee weapon, it automatically targets the chest"): a bow Head, a melee weapon
+  Spine, anything else (hand to hand, a staff, nothing held) the starting aim point - when a lock starts and when the
+  weapon changes while locked; a body part moved by the player holds until then. The log says which part and why.
 - **CCM's own target lock-on** (the owner, 2026-09-30: CCM owns target lock-on, "our own design, no credit"; 2026-10-01:
   build it and release it before Ultimate Combat Redux 1.0.1 ships with its lock-on off). The lock key - Left Alt and
   R3 by default, a press-to-bind row on the Camera tab - takes the best target in a cone ahead of the camera (a hostile

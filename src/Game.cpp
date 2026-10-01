@@ -152,15 +152,20 @@ namespace game
 			const bool toggle = KeyPressedEdge(a_s.toggleKey);
 			const bool next = KeyPressedEdge(a_s.nextPresetKey);
 			const bool lock = KeyPressedEdge(a_s.lockOnKey);
+			const bool up = KeyPressedEdge(a_s.aimPointUpKey);
+			const bool down = KeyPressedEdge(a_s.aimPointDownKey);
 			// the controller: read only when a button is bound at all (no pad read every tick for nothing)
-			bool padSwap = false, padCycle = false, padToggle = false, padNext = false, padLock = false;
-			if (a_s.shoulderSwapButton > 0 || a_s.cycleStyleButton > 0 || a_s.toggleButton > 0 || a_s.nextPresetButton > 0 || a_s.lockOnButton > 0) {
+			bool padSwap = false, padCycle = false, padToggle = false, padNext = false, padLock = false, padUp = false, padDown = false;
+			if (a_s.shoulderSwapButton > 0 || a_s.cycleStyleButton > 0 || a_s.toggleButton > 0 || a_s.nextPresetButton > 0 || a_s.lockOnButton > 0 ||
+				a_s.aimPointUpButton > 0 || a_s.aimPointDownButton > 0) {
 				const WORD pad = PadButtons();
 				padSwap = PadPressedEdge(a_s.shoulderSwapButton, pad);
 				padCycle = PadPressedEdge(a_s.cycleStyleButton, pad);
 				padToggle = PadPressedEdge(a_s.toggleButton, pad);
 				padNext = PadPressedEdge(a_s.nextPresetButton, pad);
 				padLock = PadPressedEdge(a_s.lockOnButton, pad);
+				padUp = PadPressedEdge(a_s.aimPointUpButton, pad);
+				padDown = PadPressedEdge(a_s.aimPointDownButton, pad);
 				g_padPrev = pad;
 			}
 			if (quiet) return;
@@ -169,6 +174,8 @@ namespace game
 			if (toggle || padToggle) Queue(Action::kToggle);
 			if (next || padNext) Queue(Action::kNextPreset);
 			if (lock || padLock) Queue(Action::kLockOn);
+			if (up || padUp) Queue(Action::kAimPointUp);
+			if (down || padDown) Queue(Action::kAimPointDown);
 			if (padSwap || padCycle || padToggle || padNext || padLock) {
 				logger::debug("keys: controller {} - {}", PadName(static_cast<std::int32_t>(g_padPrev)),
 					padSwap ? "shoulder swap" : padCycle ? "camera style" : padToggle ? "CCM on/off" : padNext ? "next preset" : "lock-on");
@@ -301,6 +308,12 @@ namespace game
 					break;
 				case Action::kLockOn:
 					lockon::Toggle();   // taken up by lockon::Tick later this tick
+					break;
+				case Action::kAimPointUp:
+					lockon::MoveAimPoint(-1);
+					break;
+				case Action::kAimPointDown:
+					lockon::MoveAimPoint(1);
 					break;
 				case Action::kUnstick:
 					RestoreVanilla(o, "unstick");
@@ -760,7 +773,7 @@ namespace game
 		return ok ? st.Gamepad.wButtons : 0;
 	}
 
-	bool PadRightX(float& a_x)
+	bool PadRightStick(float& a_x, float& a_y)
 	{
 		using XInputGetState_t = DWORD(WINAPI*)(DWORD, XINPUT_STATE*);
 		static XInputGetState_t s_fn = nullptr;
@@ -777,6 +790,7 @@ namespace game
 		XINPUT_STATE st{};
 		if (!s_fn || s_fn(0, &st) != ERROR_SUCCESS) return false;
 		a_x = std::clamp(static_cast<float>(st.Gamepad.sThumbRX) / 32767.0f, -1.0f, 1.0f);
+		a_y = std::clamp(static_cast<float>(st.Gamepad.sThumbRY) / 32767.0f, -1.0f, 1.0f);
 		return true;
 	}
 

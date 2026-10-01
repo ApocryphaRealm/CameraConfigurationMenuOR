@@ -25,9 +25,21 @@ namespace lockon
 			ue::Handle    pawn;
 			ue::Handle    mesh;          // its skeletal mesh, for the aim socket
 			std::wstring  socket;        // the socket aimed at ("" = the body's centre)
-			double        socketDrop = 0; // cm below the socket (the head socket stands in for the chest)
 			std::string   name;
 		};
+
+		// The body parts, as Ultimate Combat names and orders them (the owner, 2026-10-01: "Make sure we use the same word for
+		// word stuff as UCR does so that you can target different skeleton nodes" - this part follows Kramer7046's Ultimate
+		// Combat, LockOn.lua's SOCKET_NAMES and its Root_Socket fallback): 0 Head, 1 Spine, 2 Pelvis.
+		constexpr const wchar_t* kPartSockets[3] = { L"Head_Socket", L"Spine_Socket", L"Pelvis_Socket" };
+		constexpr const char*    kPartNames[3] = { "Head", "Spine", "Pelvis" };
+		constexpr const wchar_t* kSocketFallback = L"Root_Socket";
+
+		int  g_part = 1;              // the body part aimed at now
+		bool g_partManual = false;    // moved by the player this lock: holds until the next lock or weapon change
+		int  g_weaponKind = -1;       // 0 none or another kind, 1 a bow, 2 a melee weapon (-1 not read yet)
+		int  g_partQueued = 0;        // -1 up, +1 down: a key or button press, taken up on the next tick
+		bool g_stickYArmed = true;
 
 		Target      g_target;
 		bool        g_aimed = false;                 // a rotation of ours has been written since the lock began
@@ -103,22 +115,52 @@ namespace lockon
 		}
 
 		// The point on the target's skeleton the camera looks at (round 2, the owner, 2026-10-01: "CCM's lock on selected the
-		// name above the character instead of ... their skeleton" - the capsule centre plus a lift aimed near the name): its
-		// spine socket; else its head socket less a drop to the chest; else the body's centre. Chosen once per target.
+		// name above the character instead of ... their skeleton"): the socket of the body part aimed at, Root_Socket when
+		// the skeleton lacks it, else the body's centre. Chosen again whenever the target or the body part changes.
 		void PickSocket(UE::UObject* a_body)
 		{
 			g_target.mesh = {};
 			g_target.socket.clear();
-			g_target.socketDrop = 0;
 			auto* mesh = a_body ? GetObject(a_body, Find(a_body, "MainSkeletalMeshComponent")) : nullptr;
 			if (!mesh) return;
 			g_target.mesh.Set(mesh);
-			if (SocketExists(mesh, L"Spine_Socket")) {
-				g_target.socket = L"Spine_Socket";
-			} else if (SocketExists(mesh, L"Head_Socket")) {
-				g_target.socket = L"Head_Socket";
-				g_target.socketDrop = 35.0;
+			if (SocketExists(mesh, kPartSockets[g_part])) {
+				g_target.socket = kPartSockets[g_part];
+			} else if (SocketExists(mesh, kSocketFallback)) {
+				g_target.socket = kSocketFallback;
 			}
+		}
+
+		std::string SocketName()
+		{
+			if (g_target.socket.empty()) return "the body's centre";
+			return g_target.socket == kSocketFallback ? std::string("Root_Socket (no ") + kPartNames[g_part] + "_Socket)" : std::string(kPartNames[g_part]) + "_Socket";
+		}
+
+		// the held weapon's kind, read as the framing reads it (WeaponsPairingComponent -> WeaponActor -> WeaponTypeTag)
+		int WeaponKind(UE::UObject* a_pawn)
+		{
+			auto* wpc = a_pawn ? GetObject(a_pawn, Find(a_pawn, "WeaponsPairingComponent")) : nullptr;
+			auto* weapon = wpc ? GetObject(wpc, Find(wpc, "WeaponActor")) : nullptr;
+			const std::string tag = weapon ? GetName(weapon, Find(weapon, "WeaponTypeTag.TagName")) : std::string();
+			if (tag.empty() || tag.find("Staff") != std::string::npos) return 0;   // nothing held, hand to hand, a staff
+			return tag.find("Bow") != std::string::npos ? 1 : 2;
+		}
+
+		// "Aim point by weapon" (the owner, 2026-10-01: "while using a bow, it automatically targets the head, and while using a
+		// melee weapon, it automatically targets the chest"): a bow Head, a melee weapon Spine, anything else the starting part
+		int PartFor(int a_kind, const settings::Values& a_s)
+		{
+			if (a_s.lockOnAimByWeapon && a_kind == 1) return 0;
+			if (a_s.lockOnAimByWeapon && a_kind == 2) return 1;
+			return std::clamp(a_s.lockOnStartPart, 1, 3) - 1;
+		}
+
+		const char* WhyPart(int a_kind, const settings::Values& a_s)
+		{
+			if (a_s.lockOnAimByWeapon && a_kind == 1) return "bow";
+			if (a_s.lockOnAimByWeapon && a_kind == 2) return "melee weapon";
+			return "the starting aim point";
 		}
 
 		// where to look this frame (Unreal's world); false when neither the socket nor the body can be read
@@ -130,10 +172,7 @@ namespace lockon
 					c.Set("InSocketName", UE::FName(g_target.socket.c_str(), UE::EFindName::Add));
 					c.Run();
 					a_out = c.Get<std::array<double, 3>>("ReturnValue");
-					if (a_out[0] != 0.0 || a_out[1] != 0.0 || a_out[2] != 0.0) {
-						a_out[2] -= g_target.socketDrop;
-						return true;
-					}
+					if (a_out[0] != 0.0 || a_out[1] != 0.0 || a_out[2] != 0.0) return true;
 				}
 			}
 			return Location(a_body, a_out);   // the body's centre: no lift - above it is where the name stands
@@ -225,16 +264,21 @@ namespace lockon
 			SetStatus(std::format("not locked (last: {})", a_why));
 		}
 
-		void Engage(const Candidate& a_c, const char* a_how)
+		// a_fresh: a new lock (the body part starts again); a switch to another target keeps the part, as Ultimate Combat does
+		void Engage(const Candidate& a_c, const char* a_how, bool a_fresh, int a_kind, const settings::Values& a_s)
 		{
 			g_target.id = a_c.actor->GetFormID();
 			g_target.pawn.Set(a_c.body);
 			g_target.name = NameOf(a_c.actor);
+			if (a_fresh) {
+				g_part = PartFor(a_kind, a_s);
+				g_partManual = false;
+				g_weaponKind = a_kind;
+			}
 			PickSocket(a_c.body);
 			g_noBodySince = 0;
-			logger::info("lock-on: {} {} ({:.0f} units, {:.0f} degrees off the aim{}; aimed at {})", a_how, g_target.name, a_c.dist, a_c.off,
-				a_c.hostile ? ", fighting you" : "", g_target.socket.empty() ? std::string("the body's centre") :
-				std::string(g_target.socket == L"Spine_Socket" ? "Spine_Socket" : "Head_Socket") + (g_target.socketDrop > 0 ? " less 35 cm" : ""));
+			logger::info("lock-on: {} {} ({:.0f} units, {:.0f} degrees off the aim{}; aim point {}{})", a_how, g_target.name, a_c.dist, a_c.off,
+				a_c.hostile ? ", fighting you" : "", SocketName(), a_fresh ? std::format(" - {}", WhyPart(a_kind, a_s)) : std::string());
 			{
 				std::scoped_lock l(g_lock);
 				g_shownTarget = g_target.name;
@@ -313,6 +357,11 @@ namespace lockon
 		g_toggleQueued = true;
 	}
 
+	void MoveAimPoint(int a_dir)
+	{
+		g_partQueued = a_dir < 0 ? -1 : 1;
+	}
+
 	bool Active()
 	{
 		return g_target.id != 0;
@@ -328,6 +377,8 @@ namespace lockon
 		const auto& s = settings::Get();
 		auto*       player = RE::PlayerCharacter::GetSingleton();
 		const bool  pressed = std::exchange(g_toggleQueued, false);
+		int         partMove = std::exchange(g_partQueued, 0);
+		const int   kind = WeaponKind(a_in.pawn);
 
 		// a new pawn is a load: nothing from before carries over
 		if (g_playerPawn.Get() != a_in.pawn) {
@@ -362,7 +413,7 @@ namespace lockon
 			const auto all = Gather(player, me, cam, Forward(camRot), range);
 			if (const auto* best = Best(all, s.lockOnAngle, range)) {
 				++g_engages;
-				Engage(*best, "locked on");
+				Engage(*best, "locked on", true, kind, s);
 			} else {
 				logger::info("lock-on: the key was pressed - no one within {:.0f} units and {:.0f} degrees of the aim ({} in range)", range, s.lockOnAngle, all.size());
 				SetStatus("not locked - no one to lock on");
@@ -406,25 +457,55 @@ namespace lockon
 			return;
 		}
 
-		// the right stick flicked: the next target to that side
-		if (s.lockOnStickSwitch) {
-			float rx = 0.0f;
-			if (game::PadRightX(rx)) {
-				if (g_stickArmed && std::abs(rx) >= kFlick) {
-					g_stickArmed = false;
-					const double fromYaw = std::atan2(at[1] - me[1], at[0] - me[0]) * 180.0 / std::numbers::pi;
-					const auto   all = Gather(player, me, cam, Forward(camRot), range);
-					if (const auto* next = NextToward(all, fromYaw, rx > 0 ? 1 : -1)) {
-						++g_switches;
-						Engage(*next, rx > 0 ? "switched right to" : "switched left to");
-						body = next->body;
-						at = next->at;
-						if (!AimPoint(body, aim)) aim = at;
-					}
-				} else if (std::abs(rx) <= kRearm) {
-					g_stickArmed = true;
+		// the right stick: flicked left or right, the next target to that side; up or down, the aim point a body part
+		float rx = 0.0f, ry = 0.0f;
+		const bool pad = (s.lockOnStickSwitch || s.lockOnStickAimPoint) && game::PadRightStick(rx, ry);
+		if (pad && s.lockOnStickSwitch) {
+			if (g_stickArmed && std::abs(rx) >= kFlick && std::abs(rx) > std::abs(ry)) {
+				g_stickArmed = false;
+				const double fromYaw = std::atan2(at[1] - me[1], at[0] - me[0]) * 180.0 / std::numbers::pi;
+				const auto   all = Gather(player, me, cam, Forward(camRot), range);
+				if (const auto* next = NextToward(all, fromYaw, rx > 0 ? 1 : -1)) {
+					++g_switches;
+					Engage(*next, rx > 0 ? "switched right to" : "switched left to", false, kind, s);
+					body = next->body;
+					at = next->at;
+					if (!AimPoint(body, aim)) aim = at;
+				}
+			} else if (std::abs(rx) <= kRearm) {
+				g_stickArmed = true;
+			}
+		}
+		if (pad && s.lockOnStickAimPoint) {
+			if (g_stickYArmed && std::abs(ry) >= kFlick && std::abs(ry) > std::abs(rx)) {
+				g_stickYArmed = false;
+				partMove = ry > 0 ? -1 : 1;   // stick up: up a body part (XInput's Y grows upward)
+			} else if (std::abs(ry) <= kRearm) {
+				g_stickYArmed = true;
+			}
+		}
+		// the weapon changed while locked: the body part follows it again (a manual move held until now is dropped)
+		if (kind != g_weaponKind) {
+			const int was = g_weaponKind;
+			g_weaponKind = kind;
+			if (s.lockOnAimByWeapon && was >= 0) {
+				const int part = PartFor(kind, s);
+				g_partManual = false;
+				if (part != g_part) {
+					g_part = part;
+					PickSocket(body);
+					logger::info("lock-on: aim point {} - {}", SocketName(), WhyPart(kind, s));
+					if (!AimPoint(body, aim)) aim = at;
 				}
 			}
+		}
+		// up or down a body part, wrapping round as Ultimate Combat's does: up Pelvis -> Spine -> Head, down Head -> Spine -> Pelvis
+		if (partMove != 0) {
+			g_part = (g_part + partMove + 3) % 3;
+			g_partManual = true;
+			PickSocket(body);
+			logger::info("lock-on: aim point {} - moved {}", SocketName(), partMove < 0 ? "up" : "down");
+			if (!AimPoint(body, aim)) aim = at;
 		}
 
 		// where to look: the yaw along the line from the player's body to the target's skeleton, the pitch from the camera to it
@@ -453,6 +534,7 @@ namespace lockon
 	{
 		std::scoped_lock l(g_lock);
 		return { { "status", g_status }, { "target", g_shownTarget }, { "last_release", g_lastRelease }, { "engages", g_engages }, { "switches", g_switches },
+			{ "aim_point", kPartNames[std::clamp(g_part, 0, 2)] }, { "aim_point_moved_by_player", g_partManual },
 			{ "ultimate_combat_lock_on_switched_on", g_ucrOn.load() } };
 	}
 }

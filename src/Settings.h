@@ -56,6 +56,10 @@ namespace settings
 		std::int32_t customGroupButton = 0;
 		std::int32_t lockOnKey = 0x38;         // Left Alt: the owner's lock-on key (Ultimate Combat's too, whose lock-on now ships off)
 		std::int32_t lockOnButton = 0x0080;    // R3, the right stick click: the owner's target-lock button (no other mod of ours defaults to it)
+		std::int32_t aimPointUpKey = 0;        // the lock-on's aim point up / down a body part: unbound, as Ultimate Combat ships them;
+		std::int32_t aimPointDownKey = 0;      // on the controller the right stick up / down does it ([LockOn] bStickAimPoint)
+		std::int32_t aimPointUpButton = 0;
+		std::int32_t aimPointDownButton = 0;
 
 		// [LockOn] - CCM's own target lock-on (1.0.1; our own design, nothing taken from Ultimate Combat's)
 		bool  lockOnEnabled = true;
@@ -65,6 +69,9 @@ namespace settings
 		float lockOnLookDown = 8.0f;     // degrees the view tilts down from the target's chest, 0-30
 		bool  lockOnStickSwitch = true;  // a flick of the right stick moves the lock to the next target that side
 		bool  lockOnMarker = true;       // the target's name drawn over it while locked
+		std::int32_t lockOnStartPart = 2;  // the body part a lock starts on: 1 Head, 2 Spine, 3 Pelvis (Ultimate Combat's names and default)
+		bool  lockOnAimByWeapon = true;  // a bow: Head; a melee weapon: Spine; anything else: the starting part (the owner, 2026-10-01)
+		bool  lockOnStickAimPoint = true; // the right stick up / down moves the aim point a body part
 
 		// [Framing.<Context>] - where the camera sits, in centimetres ADDED to the game's own value for the state (plan
 		// 7.2): 0 = the unmodded camera. One entry per framing::Group; [0] Standing is also used by every context whose

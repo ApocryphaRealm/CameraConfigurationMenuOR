@@ -64,7 +64,7 @@ namespace tool
 			} else if (op == "action") {
 				const std::string n = args.value("name", "");
 				const std::unordered_map<std::string, game::Action> m = { { "shoulderSwap", game::Action::kShoulderSwap },
-					{ "cycleStyle", game::Action::kCycleStyle }, { "toggle", game::Action::kToggle }, { "unstick", game::Action::kUnstick }, { "nextPreset", game::Action::kNextPreset }, { "lockOn", game::Action::kLockOn } };
+					{ "cycleStyle", game::Action::kCycleStyle }, { "toggle", game::Action::kToggle }, { "unstick", game::Action::kUnstick }, { "nextPreset", game::Action::kNextPreset }, { "lockOn", game::Action::kLockOn }, { "aimPointUp", game::Action::kAimPointUp }, { "aimPointDown", game::Action::kAimPointDown } };
 				const auto it = m.find(n);
 				if (it == m.end()) { Write(a_sink, a_write, { { "ok", false }, { "error", "name: shoulderSwap|cycleStyle|toggle|unstick" } }); return; }
 				game::Queue(it->second);

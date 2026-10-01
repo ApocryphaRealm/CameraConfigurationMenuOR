@@ -149,22 +149,25 @@ namespace game
 			const bool swap = KeyPressedEdge(a_s.shoulderSwapKey);
 			const bool cycle = KeyPressedEdge(a_s.cycleStyleKey);
 			const bool toggle = KeyPressedEdge(a_s.toggleKey);
+			const bool next = KeyPressedEdge(a_s.nextPresetKey);
 			// the controller: read only when a button is bound at all (no pad read every tick for nothing)
-			bool padSwap = false, padCycle = false, padToggle = false;
-			if (a_s.shoulderSwapButton > 0 || a_s.cycleStyleButton > 0 || a_s.toggleButton > 0) {
+			bool padSwap = false, padCycle = false, padToggle = false, padNext = false;
+			if (a_s.shoulderSwapButton > 0 || a_s.cycleStyleButton > 0 || a_s.toggleButton > 0 || a_s.nextPresetButton > 0) {
 				const WORD pad = PadButtons();
 				padSwap = PadPressedEdge(a_s.shoulderSwapButton, pad);
 				padCycle = PadPressedEdge(a_s.cycleStyleButton, pad);
 				padToggle = PadPressedEdge(a_s.toggleButton, pad);
+				padNext = PadPressedEdge(a_s.nextPresetButton, pad);
 				g_padPrev = pad;
 			}
 			if (quiet) return;
 			if (swap || padSwap) Queue(Action::kShoulderSwap);
 			if (cycle || padCycle) Queue(Action::kCycleStyle);
 			if (toggle || padToggle) Queue(Action::kToggle);
-			if (padSwap || padCycle || padToggle) {
+			if (next || padNext) Queue(Action::kNextPreset);
+			if (padSwap || padCycle || padToggle || padNext) {
 				logger::debug("keys: controller {} - {}", PadName(static_cast<std::int32_t>(g_padPrev)),
-					padSwap ? "shoulder swap" : padCycle ? "camera style" : "CCM on/off");
+					padSwap ? "shoulder swap" : padCycle ? "camera style" : padToggle ? "CCM on/off" : "next preset");
 			}
 		}
 
@@ -225,6 +228,9 @@ namespace game
 					a_s.enabled = !a_s.enabled;
 					logger::info("CCM {}", a_s.enabled ? "on" : "off");
 					settings::Save();
+					break;
+				case Action::kNextPreset:
+					if (const int s = settings::NextPreset(); s > 0) logger::info("next preset: slot {} ({})", s, settings::PresetName(s));
 					break;
 				case Action::kUnstick:
 					RestoreVanilla(o, "unstick");

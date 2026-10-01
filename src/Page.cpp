@@ -81,20 +81,21 @@ namespace page
 		// another CCM action are refused with the reason, and the capture is armed again for the next press.
 		struct Capture
 		{
-			int         row = -1;      // 0 shoulder swap, 1 camera style, 2 CCM on/off; -1 none
+			int         row = -1;      // 0 shoulder swap, 1 camera style, 2 CCM on/off, 3 next preset; -1 none
 			bool        pad = false;
 			int         phase = 0;     // pad: 1 = waiting for every button to be let go (the A that pressed Bind), 2 = armed
 			std::string message;
 		};
 		Capture g_cap;
+		constexpr int kBindRows = 4;
 
 		std::int32_t* KeyOf(settings::Values& a_s, int a_row)
 		{
-			return a_row == 0 ? &a_s.shoulderSwapKey : a_row == 1 ? &a_s.cycleStyleKey : &a_s.toggleKey;
+			return a_row == 0 ? &a_s.shoulderSwapKey : a_row == 1 ? &a_s.cycleStyleKey : a_row == 2 ? &a_s.toggleKey : &a_s.nextPresetKey;
 		}
 		std::int32_t* PadOf(settings::Values& a_s, int a_row)
 		{
-			return a_row == 0 ? &a_s.shoulderSwapButton : a_row == 1 ? &a_s.cycleStyleButton : &a_s.toggleButton;
+			return a_row == 0 ? &a_s.shoulderSwapButton : a_row == 1 ? &a_s.cycleStyleButton : a_row == 2 ? &a_s.toggleButton : &a_s.nextPresetButton;
 		}
 
 		void StartCapture(int a_row, bool a_pad)
@@ -123,7 +124,7 @@ namespace page
 		// the reason a_code cannot go on row a_row (empty = it can)
 		std::string Refusal(settings::Values& a_s, int a_row, bool a_pad, std::int32_t a_code)
 		{
-			for (int r = 0; r < 3; ++r) {
+			for (int r = 0; r < kBindRows; ++r) {
 				if (r != a_row && (a_pad ? *PadOf(a_s, r) : *KeyOf(a_s, r)) == a_code) {
 					return TR("BindRefuseOther", "another CCM action already uses it");
 				}
@@ -193,14 +194,14 @@ namespace page
 			if (!AMF::HasKeyCapture()) {
 				Hint(TR("BindOldFramework", "Binding here needs Apocrypha Menu Framework 1.0.2 or newer. The keys and buttons can still be set in CameraConfigurationMenu.ini."));
 			}
-			const char* actions[3] = { TR("BindShoulder", "Move the camera to the other shoulder"), TR("BindCycle", "Switch the free camera style"),
-				TR("BindToggle", "Turn CCM on or off") };
+			const char* actions[kBindRows] = { TR("BindShoulder", "Move the camera to the other shoulder"), TR("BindCycle", "Switch the free camera style"),
+				TR("BindToggle", "Turn CCM on or off"), TR("BindNextPreset", "Load the next preset") };
 			const bool can = AMF::HasKeyCapture();
 			if (ImGui::BeginTable("##ccmbinds", 3, ImGuiTableFlags_SizingStretchProp)) {
 				ImGui::TableSetupColumn("action", ImGuiTableColumnFlags_WidthStretch, 1.6f);
 				ImGui::TableSetupColumn("key", ImGuiTableColumnFlags_WidthStretch, 1.0f);
 				ImGui::TableSetupColumn("pad", ImGuiTableColumnFlags_WidthStretch, 1.2f);
-				for (int r = 0; r < 3; ++r) {
+				for (int r = 0; r < kBindRows; ++r) {
 					ImGui::PushID(r);
 					ImGui::TableNextRow();
 					ImGui::TableNextColumn();
@@ -398,6 +399,88 @@ namespace page
 		// Better Third-Person Selection, inside CCM (plan 13.2)
 		// The conversation camera (the owner: "add to CCM a conversation camera tab") - the Conversation context's own
 		// position, and whether the free camera stands down while a conversation runs
+		// Presets (1.0.1; plan section 7.5): the three built-ins and six user slots (name, Save, Load, Clear). A preset is
+		// the camera's look - style, framing, zoom, smoothing - never the keys, the selection or the crosshair.
+		std::array<std::array<char, 48>, settings::kPresetSlots> g_presetNames{};
+		bool        g_presetNamesRead = false;
+		int         g_clearArmed = 0;   // the slot whose Clear was pressed once; a second press clears it
+		std::string g_presetMsg;
+
+		void DrawPresets()
+		{
+			if (!Begin()) return;
+			auto& s = settings::Get();
+			if (!g_presetNamesRead) {
+				g_presetNamesRead = true;
+				for (int i = 0; i < settings::kPresetSlots; ++i) {
+					const std::string n = settings::PresetExists(i + 1) ? settings::PresetName(i + 1) : std::string();
+					std::snprintf(g_presetNames[static_cast<std::size_t>(i)].data(), g_presetNames[static_cast<std::size_t>(i)].size(), "%s", n.c_str());
+				}
+			}
+			Hint(TR("PresetsIntro", "A preset holds the camera's look: the style, the framing, the zoom and the smoothing. Loading one never changes your keys, selection or crosshair settings."));
+			ImGui::Text("%s: %s", TR("PresetActive", "Active preset"),
+				s.activePreset > 0 && settings::PresetExists(s.activePreset) ? settings::PresetName(s.activePreset).c_str() : TR("PresetNone", "none"));
+
+			ImGui::SeparatorText(TR("PresetsBuiltIn", "Built-in"));
+			const char* builtins[3] = { TR("PresetVanilla", "Vanilla"), TR("PresetPlayerCamera", "Player Camera"), TR("PresetPlayerCameraAlt", "Player Camera Alt") };
+			for (int b = 0; b < 3; ++b) {
+				if (b > 0) ImGui::SameLine();
+				if (ImGui::Button(builtins[b])) {
+					settings::LoadBuiltin(b);
+					g_presetMsg = std::format("{}: {}", builtins[b], TR("PresetLoaded", "loaded"));
+				}
+			}
+			Hint(TR("PresetsBuiltInHint", "Vanilla: the game's own camera. Player Camera: the free camera. Player Camera Alt: the free camera only with the weapon sheathed. All three with no offsets and the game's own smoothing."));
+
+			ImGui::SeparatorText(TR("PresetsSlots", "Your presets"));
+			if (ImGui::BeginTable("##ccmpresets", 4, ImGuiTableFlags_SizingStretchProp)) {
+				ImGui::TableSetupColumn("name", ImGuiTableColumnFlags_WidthStretch, 2.0f);
+				for (int i = 0; i < settings::kPresetSlots; ++i) {
+					ImGui::PushID(i);
+					auto&      buf = g_presetNames[static_cast<std::size_t>(i)];
+					const int  slot = i + 1;
+					const bool has = settings::PresetExists(slot);
+					ImGui::TableNextRow();
+					ImGui::TableNextColumn();
+					ImGui::SetNextItemWidth(-FLT_MIN);
+					const std::string hint = std::format("{} {}{}", TR("PresetSlot", "Slot"), slot, has ? "" : std::format(" ({})", TR("PresetEmpty", "empty")));
+					ImGui::InputTextWithHint("##name", hint.c_str(), buf.data(), buf.size());
+					ImGui::TableNextColumn();
+					if (ImGui::Button(TR("PresetSave", "Save"))) {
+						const std::string name = buf[0] ? std::string(buf.data()) : std::format("{} {}", TR("PresetSlot", "Slot"), slot);
+						g_presetMsg = settings::SavePreset(slot, name) ? std::format("{}: {}", name, TR("PresetSaved", "saved")) : TR("PresetSaveFailed", "The preset could not be written.");
+						std::snprintf(buf.data(), buf.size(), "%s", name.c_str());
+						g_clearArmed = 0;
+					}
+					ImGui::TableNextColumn();
+					ImGui::BeginDisabled(!has);
+					if (ImGui::Button(TR("PresetLoad", "Load"))) {
+						g_presetMsg = settings::LoadPreset(slot) ? std::format("{}: {}", settings::PresetName(slot), TR("PresetLoaded", "loaded")) : TR("PresetEmptyMsg", "That slot is empty.");
+						g_clearArmed = 0;
+					}
+					ImGui::EndDisabled();
+					ImGui::TableNextColumn();
+					ImGui::BeginDisabled(!has);
+					const bool armed = g_clearArmed == slot;
+					if (ImGui::Button(armed ? TR("PresetClearSure", "Press again to clear") : TR("PresetClear", "Clear"))) {
+						if (armed) {
+							settings::ClearPreset(slot);
+							buf[0] = '\0';
+							g_clearArmed = 0;
+							g_presetMsg = std::format("{} {}: {}", TR("PresetSlot", "Slot"), slot, TR("PresetCleared", "cleared"));
+						} else {
+							g_clearArmed = slot;
+						}
+					}
+					ImGui::EndDisabled();
+					ImGui::PopID();
+				}
+				ImGui::EndTable();
+			}
+			Hint(TR("PresetsNextHint", "\"Load the next preset\" on the Camera tab's keys loads your saved presets in turn."));
+			if (!g_presetMsg.empty()) Hint(g_presetMsg.c_str());
+		}
+
 		void DrawConversation()
 		{
 			if (!Begin()) return;
@@ -544,10 +627,11 @@ namespace page
 		}
 		const bool a = AMF::RegisterPage(kModName, "Camera", &DrawCamera);
 		const bool f = AMF::RegisterPage(kModName, "Framing", &DrawFraming);
+		const bool p = AMF::RegisterPage(kModName, "Presets", &DrawPresets);
 		const bool v = AMF::RegisterPage(kModName, "Conversation", &DrawConversation);
 		const bool c = AMF::RegisterPage(kModName, "Selection", &DrawSelection);
 		const bool d = AMF::RegisterPage(kModName, "Crosshair", &DrawCrosshair);
 		const bool b = AMF::RegisterPage(kModName, "Status", &DrawStatus);
-		logger::info("AMF {} (API {}): pages Camera={}, Framing={}, Conversation={}, Selection={}, Crosshair={}, Status={}", AMF::Version(), AMF::APIVersion(), a, f, v, c, d, b);
+		logger::info("AMF {} (API {}): pages Camera={}, Framing={}, Presets={}, Conversation={}, Selection={}, Crosshair={}, Status={}", AMF::Version(), AMF::APIVersion(), a, f, p, v, c, d, b);
 	}
 }

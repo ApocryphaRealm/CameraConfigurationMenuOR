@@ -48,7 +48,7 @@ namespace game
 	Snapshot Status();
 
 	// Actions from keys, the page and ccm.drive - queued, applied on the next game tick.
-	enum class Action { kShoulderSwap, kCycleStyle, kToggle, kUnstick };
+	enum class Action { kShoulderSwap, kCycleStyle, kToggle, kUnstick, kNextPreset };
 	void Queue(Action a_action);
 	void NotePageDrawn();   // the AMF page drew this frame: CCM's keys stay quiet while its menu is open
 

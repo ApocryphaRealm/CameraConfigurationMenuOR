@@ -135,4 +135,19 @@ namespace settings
 
 	// The full INI text as the compiled defaults write it - what tools/write-ini.py and the gate compare against.
 	std::string DefaultIniText();
+
+	// ---- presets (1.0.1; plan section 7.5) ----
+	// Six user slots, each <plugin folder>\CameraConfigurationMenu\Presets\Slot<n>.ini in the main INI's own format, with
+	// a [Preset] sName. A preset holds the camera's look: [General] (all but bEnabled), [Zoom], every [Framing.*] and
+	// [Smoothing] - never the keys, the selection, the crosshair or the log, so loading one never rebinds anything. Three
+	// built-ins are compiled in (Vanilla = style 0, Player Camera = 1, Player Camera Alt = 2, all with zero offsets and the
+	// game's smoothing). The slot loaded last is [Presets] iActive (0 = a built-in or none).
+	inline constexpr int kPresetSlots = 6;
+	bool        PresetExists(int a_slot);                          // a_slot 1..6
+	std::string PresetName(int a_slot);                            // its sName, or "" when empty
+	bool        SavePreset(int a_slot, const std::string& a_name); // the current values into the slot
+	bool        LoadPreset(int a_slot);                            // applies it, sets iActive, saves the main INI
+	bool        ClearPreset(int a_slot);                           // removes the slot's file (the player's own button)
+	void        LoadBuiltin(int a_style);                          // 0 Vanilla, 1 Player Camera, 2 Player Camera Alt
+	int         NextPreset();                                      // the next non-empty slot after the active one, loaded; 0 when none
 }

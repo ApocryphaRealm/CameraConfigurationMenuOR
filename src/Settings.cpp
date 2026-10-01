@@ -423,4 +423,148 @@ namespace settings
 		}
 		return s;
 	}
+	// ---- presets (plan 7.5) ----------------------------------------------------------------------------------------
+	namespace
+	{
+		// a row a preset carries: the camera's look, never the keys, the selection, the crosshair, the presets or the log
+		bool InPreset(const Field& a_f)
+		{
+			const std::string sec = Lower(std::string(a_f.section));
+			if (sec == "general") return Lower(std::string(a_f.key)) != "benabled";
+			return sec == "zoom" || sec == "smoothing" || sec.starts_with("framing");
+		}
+
+		std::filesystem::path PresetPath(int a_slot)
+		{
+			return ModuleFolder() / L"CameraConfigurationMenu" / L"Presets" / std::format(L"Slot{}.ini", a_slot);
+		}
+
+		bool ValidSlot(int a_slot) { return a_slot >= 1 && a_slot <= kPresetSlots; }
+
+		// "section.key" (lower case) -> value text, and the [Preset] sName as written
+		bool ReadPreset(int a_slot, std::unordered_map<std::string, std::string>& a_entries, std::string& a_name)
+		{
+			std::ifstream file(PresetPath(a_slot));
+			if (!file.is_open()) return false;
+			std::string line, section;
+			while (std::getline(file, line)) {
+				const auto t = Trim(line);
+				if (t.empty() || t.front() == ';' || t.front() == '#') continue;
+				if (t.front() == '[' && t.back() == ']') {
+					section = Lower(std::string(Trim(t.substr(1, t.size() - 2))));
+					continue;
+				}
+				const auto eq = t.find('=');
+				if (eq == std::string_view::npos) continue;
+				const std::string key = Lower(std::string(Trim(t.substr(0, eq))));
+				const std::string val(Trim(t.substr(eq + 1)));
+				if (section == "preset" && key == "sname") a_name = val;
+				a_entries[section + "." + key] = val;
+			}
+			return true;
+		}
+	}
+
+	bool PresetExists(int a_slot) { return ValidSlot(a_slot) && std::filesystem::exists(PresetPath(a_slot)); }
+
+	std::string PresetName(int a_slot)
+	{
+		std::unordered_map<std::string, std::string> e;
+		std::string name;
+		if (!ValidSlot(a_slot) || !ReadPreset(a_slot, e, name)) return {};
+		return name.empty() ? std::format("Preset {}", a_slot) : name;
+	}
+
+	bool SavePreset(int a_slot, const std::string& a_name)
+	{
+		if (!ValidSlot(a_slot) || g_tableBroken || !TableSound()) return false;
+		std::scoped_lock l(g_saveLock);
+		const auto path = PresetPath(a_slot);
+		std::error_code ec;
+		std::filesystem::create_directories(path.parent_path(), ec);
+		std::string s = "; CCM - Camera Configuration Menu preset, saved from its Presets page. The same keys as CameraConfigurationMenu.ini.\r\n";
+		std::string name = a_name;
+		std::erase_if(name, [](char c) { return c == '\r' || c == '\n'; });
+		s += "\r\n[Preset]\r\nsName=" + name + "\r\n";
+		std::string section;
+		for (const auto& f : kTable) {
+			if (!InPreset(f)) continue;
+			if (section != f.section) {
+				section = f.section;
+				s += "\r\n[" + section + "]\r\n";
+			}
+			s += std::string(f.key) + "=" + Format(f, Read(g_values, f)) + "\r\n";
+		}
+		std::ofstream out(path, std::ios::binary | std::ios::trunc);
+		if (!out.is_open()) {
+			logger::warn("presets: slot {} could not be written to {}", a_slot, path.string());
+			return false;
+		}
+		out << s;
+		logger::info("presets: slot {} saved as \"{}\" ({})", a_slot, name, path.string());
+		return true;
+	}
+
+	bool LoadPreset(int a_slot)
+	{
+		if (!ValidSlot(a_slot) || g_tableBroken) return false;
+		std::unordered_map<std::string, std::string> e;
+		std::string name;
+		if (!ReadPreset(a_slot, e, name)) {
+			logger::info("presets: slot {} is empty", a_slot);
+			return false;
+		}
+		int applied = 0;
+		for (const auto& f : kTable) {
+			if (!InPreset(f)) continue;
+			const auto it = e.find(Lower(std::string(f.section)) + "." + Lower(std::string(f.key)));
+			if (it == e.end()) continue;   // a preset from an older version: that setting keeps its current value
+			if (const auto x = Parse(f, it->second)) {
+				Write(g_values, f, *x);
+				++applied;
+			}
+		}
+		g_values.activePreset = a_slot;
+		Save();
+		logger::info("presets: slot {} (\"{}\") loaded - {} values", a_slot, name, applied);
+		return true;
+	}
+
+	bool ClearPreset(int a_slot)
+	{
+		if (!ValidSlot(a_slot)) return false;
+		std::error_code ec;
+		const bool removed = std::filesystem::remove(PresetPath(a_slot), ec);
+		if (g_values.activePreset == a_slot) {
+			g_values.activePreset = 0;
+			Save();
+		}
+		logger::info("presets: slot {} cleared{}", a_slot, removed ? "" : " (it was empty)");
+		return removed;
+	}
+
+	void LoadBuiltin(int a_style)
+	{
+		if (g_tableBroken) return;
+		const Values d{};
+		for (const auto& f : kTable) {
+			if (InPreset(f)) Write(g_values, f, Read(d, f));
+		}
+		g_values.cameraStyle = std::clamp(a_style, 0, 2);
+		g_values.activePreset = 0;
+		Save();
+		logger::info("presets: built-in {} loaded (style {}, zero offsets, the game's smoothing)",
+			a_style == 0 ? "Vanilla" : a_style == 1 ? "Player Camera" : "Player Camera Alt", g_values.cameraStyle);
+	}
+
+	int NextPreset()
+	{
+		const int from = std::clamp(g_values.activePreset, 0, kPresetSlots);
+		for (int i = 1; i <= kPresetSlots; ++i) {
+			const int s = (from + i - 1) % kPresetSlots + 1;
+			if (PresetExists(s) && LoadPreset(s)) return s;
+		}
+		logger::info("presets: next preset - no slot holds a preset");
+		return 0;
+	}
 }

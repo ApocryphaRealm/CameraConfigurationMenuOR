@@ -20,6 +20,15 @@ Two of the 1.0.0 page's known issues, at the owner's request (relayed 2026-10-01
   framework's window is up (AMF_IsMenuOpen) and while CCM's page drew in the last 250 ms. Nothing is taken from the
   game: a bound button also does what the game does with it. Still no button ships bound.
 
+- **Presets** (plan section 7.5; 1.0.0 had the settings but no code - the to-do list's "implement or remove"). A new
+  Presets tab: the active preset; three built-ins (Vanilla = the game's camera, Player Camera = the free camera, Player
+  Camera Alt = the free camera only with the weapon sheathed - all with zero offsets and the game's smoothing, compiled
+  in); six slots, each with a name, Save, Load and Clear (Clear asks for a second press). A slot is
+  `CameraConfigurationMenu\Presets\Slot<n>.ini` beside the plugin, in the main INI's own format with a [Preset] sName. A
+  preset is the camera's look - [General] (all but bEnabled), [Zoom], every [Framing.*] and [Smoothing] - never the
+  keys, the selection, the crosshair or the log. [Presets] iActive remembers the slot loaded last. A fourth bind row,
+  "Load the next preset" (key and controller button), loads the saved slots in turn; ccm.drive takes `nextPreset`.
+
 ### Fixed
 - **The crosshair while aiming a bow** (1.0.0's known issue). The crosshair image's material, MIC_CrossHair_SneakEye
   (read from the paks with uetex --params), draws the ranged reticle by its BowDrawAlpha scalar, which defaults to 0 -

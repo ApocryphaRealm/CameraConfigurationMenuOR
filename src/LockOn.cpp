@@ -23,6 +23,9 @@ namespace lockon
 		{
 			RE::TESFormID id = 0;
 			ue::Handle    pawn;
+			ue::Handle    mesh;          // its skeletal mesh, for the aim socket
+			std::wstring  socket;        // the socket aimed at ("" = the body's centre)
+			double        socketDrop = 0; // cm below the socket (the head socket stands in for the chest)
 			std::string   name;
 		};
 
@@ -88,6 +91,52 @@ namespace lockon
 		{
 			static ue::Getter location(L"K2_GetActorLocation");
 			return a_actor && location.Get(a_actor, a_out);
+		}
+
+		bool SocketExists(UE::UObject* a_mesh, const wchar_t* a_name)
+		{
+			ue::Call c(a_mesh, L"DoesSocketExist");
+			if (!c) return false;
+			c.Set("InSocketName", UE::FName(a_name, UE::EFindName::Add));
+			c.Run();
+			return c.Get<bool>("ReturnValue");
+		}
+
+		// The point on the target's skeleton the camera looks at (round 2, the owner, 2026-10-01: "CCM's lock on selected the
+		// name above the character instead of ... their skeleton" - the capsule centre plus a lift aimed near the name): its
+		// spine socket; else its head socket less a drop to the chest; else the body's centre. Chosen once per target.
+		void PickSocket(UE::UObject* a_body)
+		{
+			g_target.mesh = {};
+			g_target.socket.clear();
+			g_target.socketDrop = 0;
+			auto* mesh = a_body ? GetObject(a_body, Find(a_body, "MainSkeletalMeshComponent")) : nullptr;
+			if (!mesh) return;
+			g_target.mesh.Set(mesh);
+			if (SocketExists(mesh, L"Spine_Socket")) {
+				g_target.socket = L"Spine_Socket";
+			} else if (SocketExists(mesh, L"Head_Socket")) {
+				g_target.socket = L"Head_Socket";
+				g_target.socketDrop = 35.0;
+			}
+		}
+
+		// where to look this frame (Unreal's world); false when neither the socket nor the body can be read
+		bool AimPoint(UE::UObject* a_body, std::array<double, 3>& a_out)
+		{
+			if (auto* mesh = g_target.socket.empty() ? nullptr : g_target.mesh.Get()) {
+				ue::Call c(mesh, L"GetSocketLocation");
+				if (c) {
+					c.Set("InSocketName", UE::FName(g_target.socket.c_str(), UE::EFindName::Add));
+					c.Run();
+					a_out = c.Get<std::array<double, 3>>("ReturnValue");
+					if (a_out[0] != 0.0 || a_out[1] != 0.0 || a_out[2] != 0.0) {
+						a_out[2] -= g_target.socketDrop;
+						return true;
+					}
+				}
+			}
+			return Location(a_body, a_out);   // the body's centre: no lift - above it is where the name stands
 		}
 
 		// the cells around the player: its own inside, the 3 x 3 around it outside
@@ -181,8 +230,11 @@ namespace lockon
 			g_target.id = a_c.actor->GetFormID();
 			g_target.pawn.Set(a_c.body);
 			g_target.name = NameOf(a_c.actor);
+			PickSocket(a_c.body);
 			g_noBodySince = 0;
-			logger::info("lock-on: {} {} ({:.0f} units, {:.0f} degrees off the aim{})", a_how, g_target.name, a_c.dist, a_c.off, a_c.hostile ? ", fighting you" : "");
+			logger::info("lock-on: {} {} ({:.0f} units, {:.0f} degrees off the aim{}; aimed at {})", a_how, g_target.name, a_c.dist, a_c.off,
+				a_c.hostile ? ", fighting you" : "", g_target.socket.empty() ? std::string("the body's centre") :
+				std::string(g_target.socket == L"Spine_Socket" ? "Spine_Socket" : "Head_Socket") + (g_target.socketDrop > 0 ? " less 35 cm" : ""));
 			{
 				std::scoped_lock l(g_lock);
 				g_shownTarget = g_target.name;
@@ -333,10 +385,13 @@ namespace lockon
 		auto* body = g_target.pawn.Get();
 		if (!body) {
 			body = BodyOf(actor);   // the body can be rebuilt (a cell reload): look it up again
-			if (body) g_target.pawn.Set(body);
+			if (body) {
+				g_target.pawn.Set(body);
+				PickSocket(body);
+			}
 		}
-		std::array<double, 3> at{};
-		if (!body || !Location(body, at)) {
+		std::array<double, 3> at{}, aim{};
+		if (!body || !Location(body, at) || !AimPoint(body, aim)) {
 			const ULONGLONG now = GetTickCount64();
 			if (!g_noBodySince) g_noBodySince = now;
 			if (now - g_noBodySince >= kNoBodyMs) Release("the target's body cannot be read");
@@ -364,6 +419,7 @@ namespace lockon
 						Engage(*next, rx > 0 ? "switched right to" : "switched left to");
 						body = next->body;
 						at = next->at;
+						if (!AimPoint(body, aim)) aim = at;
 					}
 				} else if (std::abs(rx) <= kRearm) {
 					g_stickArmed = true;
@@ -371,10 +427,10 @@ namespace lockon
 			}
 		}
 
-		// where to look: the yaw along the line from the player's body to the target, the pitch from the camera to its chest
-		const double goalYaw = std::atan2(at[1] - me[1], at[0] - me[0]) * 180.0 / std::numbers::pi;
-		const double dz = at[2] + kChestLift - cam[2];
-		const double goalPitch = std::clamp(std::atan2(dz, std::hypot(at[0] - cam[0], at[1] - cam[1])) * 180.0 / std::numbers::pi - s.lockOnLookDown, kPitchMin, kPitchMax);
+		// where to look: the yaw along the line from the player's body to the target's skeleton, the pitch from the camera to it
+		const double goalYaw = std::atan2(aim[1] - me[1], aim[0] - me[0]) * 180.0 / std::numbers::pi;
+		const double dz = aim[2] - cam[2];
+		const double goalPitch = std::clamp(std::atan2(dz, std::hypot(aim[0] - cam[0], aim[1] - cam[1])) * 180.0 / std::numbers::pi - s.lockOnLookDown, kPitchMin, kPitchMax);
 
 		// from our own last rotation (the stick's turning this frame is not followed); on the first frame the camera's
 		std::array<double, 3> cur = g_aimed ? g_lastRot : camRot;

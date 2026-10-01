@@ -215,12 +215,20 @@ namespace game
 		// and turning to face the camera (bUseControllerDesiredRotation) use. The game sets its own per state (420.9 walking
 		// free, 720 facing the camera - read live), so it is written every tick while the free camera runs in third person;
 		// a value that is not ours is the game's new one, kept to put back when the setting stops applying.
+		// Round 2 (the owner, 2026-10-01: "I don't seem to notice any kind of change in the turn speed"): the pawn derives
+		// RotationRate from Curve_PlayerRotationSpeed_Float every frame (VPairedPawn bUseRotationSpeedCurve = true - 200 /
+		// 421 / 477 / 596 / 720 by state and speed, read live), and that write came before the movement's rotation, ours
+		// after it. While the setting applies the pawn's curve is switched off (its own value recorded and put back on
+		// every path that puts the rate back), so the rate written here is the one the movement uses.
 		struct BodyTurn
 		{
 			UE::UObject* move = nullptr;   // the component it was applied to (a load brings a new one)
 			bool         applied = false;
 			double       game = 0.0;       // the game's own yaw rate, last seen
 			double       ours = 0.0;
+			bool         curveGame = true; // the pawn's own bUseRotationSpeedCurve, recorded when the setting began applying
+			double       logged = -1.0;    // the rate last named in the log
+			ULONGLONG    loggedAt = 0;
 		} g_bodyTurn;
 
 		void ApplyBodyTurn(const Objects& o, bool a_on, float a_speed)
@@ -229,7 +237,12 @@ namespace game
 			if (!o.move) return;
 			const auto& p = Find(o.move, "RotationRate");
 			auto        r = GetVec(o.move, p);   // FRotator: pitch, yaw, roll
+			const auto& curve = o.pawn ? Find(o.pawn, "bUseRotationSpeedCurve") : Find(o.move, "bUseRotationSpeedCurve");
 			if (a_on && a_speed > 0.0f) {
+				if (!g_bodyTurn.applied && o.pawn) {
+					g_bodyTurn.curveGame = GetBool(o.pawn, curve);
+				}
+				if (o.pawn && GetBool(o.pawn, curve)) SetBool(o.pawn, curve, false);
 				if (!g_bodyTurn.applied || std::abs(r[1] - g_bodyTurn.ours) > 0.01) {
 					if (!g_bodyTurn.applied || std::abs(r[1] - g_bodyTurn.game) > 0.01) logger::debug("body turn: the game's own rate is {:.1f} degrees/s", r[1]);
 					g_bodyTurn.game = r[1];
@@ -238,7 +251,14 @@ namespace game
 					r[1] = a_speed;
 					SetVec(o.move, p, r);
 				}
-				if (!g_bodyTurn.applied) logger::info("body turn: {:.0f} degrees/s (the game's {:.1f})", a_speed, g_bodyTurn.game);
+				// named in the log when it changes, once it has held a second (a slider being dragged logs once)
+				const ULONGLONG nowMs = GetTickCount64();
+				if (std::abs(a_speed - g_bodyTurn.ours) > 0.01) g_bodyTurn.loggedAt = nowMs;
+				if (std::abs(a_speed - g_bodyTurn.logged) > 0.01 && nowMs - g_bodyTurn.loggedAt >= 1000) {
+					logger::info("body turn: {:.0f} degrees/s (the game's {:.1f}; its rotation curve {} - off while this applies; read back {:.1f})", a_speed,
+						g_bodyTurn.game, g_bodyTurn.curveGame ? "on" : "off", GetVec(o.move, p)[1]);
+					g_bodyTurn.logged = a_speed;
+				}
 				g_bodyTurn.ours = a_speed;
 				g_bodyTurn.applied = true;
 			} else if (g_bodyTurn.applied) {
@@ -246,8 +266,10 @@ namespace game
 					r[1] = g_bodyTurn.game;
 					SetVec(o.move, p, r);
 				}
-				logger::info("body turn: the game's own rate again ({:.1f} degrees/s)", g_bodyTurn.game);
+				if (o.pawn) SetBool(o.pawn, curve, g_bodyTurn.curveGame);   // the pawn's curve back as it was
+				logger::info("body turn: the game's own rate again ({:.1f} degrees/s, its rotation curve {})", g_bodyTurn.game, g_bodyTurn.curveGame ? "on" : "off");
 				g_bodyTurn.applied = false;
+				g_bodyTurn.logged = -1.0;
 			}
 		}
 

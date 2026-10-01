@@ -45,6 +45,14 @@ Two of the 1.0.0 page's known issues, at the owner's request (relayed 2026-10-01
   "Load the next preset" (key and controller button), loads the saved slots in turn; ccm.drive takes `nextPreset`.
 
 ### Fixed
+- Round 2 of the lock-on / body-turn test (the owner, 2026-10-01 ~06:05):
+  - "I don't seem to notice any kind of change in the turn speed" (fBodyTurnSpeed 823): the pawn derives
+    RotationRate from Curve_PlayerRotationSpeed_Float every frame (bUseRotationSpeedCurve, read live by the PC
+    session) before the movement turns it, so CCM's write came too late. While the setting applies the pawn's curve
+    is switched off, its own value put back after; the log names each new rate once it has held a second.
+  - "CCM's lock on selected the name above the character instead of ... their skeleton": the camera aimed at the
+    capsule centre plus 45 cm, up near the name. It now aims at the target's Spine_Socket (else its Head_Socket less
+    35 cm, else the body's centre with no lift); the engage line says which.
 - [General] fBodyTurnSpeed did nothing - nothing read it, and it had no row on the page. Now, while the free camera
   runs in third person, it sets the movement component's RotationRate.Yaw every tick (the game sets its own per state:
   420.9 walking free, 720 facing the camera, read live), so it covers turning toward where you move and turning to

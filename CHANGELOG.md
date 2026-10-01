@@ -3,7 +3,22 @@
 Written as changes happen, not reconstructed afterwards (rule 61). Started 2026-09-29; the history before this file is
 in `git log`. A version number is issued by the version gate only once a build is seen working in game (rule 48).
 
-## Unreleased - 2026-09-29 - untested (resumed)
+## 1.0.0 - 2026-10-01 - working
+
+### Release (2026-10-01)
+- The owner, 2026-10-01: "go ahead and try and do a finalize of the CCM mod. As it's not perfect currently, but it is
+  functional. And just set it to default base values." Version 1.0.0 issued by the version gate; the package ships the
+  compiled defaults (every framing offset 0 = the game's own camera, the CCM camera style on, only the two standard
+  keys bound) - the owner's own tuned INI in MO2 is not touched.
+- Known issues at release, stated on the page and not claimed as fixed:
+  - **The crosshair while aiming a bow.** The Round 11 change below (a zero opacity is never taken as the shown value;
+    the bow's Zooming state counts as aiming) went after the wrong cause: the game's crosshair material carries
+    BowDrawAlpha 0 while aiming, so the crosshair can still stay hidden while a bow is drawn. Open.
+  - **No target lock-on yet.** CCM is to own lock-on with a design of its own (planned); until then Ultimate Combat
+    Redux keeps its lock-on, and its defaults are unchanged by this release. 3e97073 only fixed CCM's view restore after
+    a conversation, which had left UCR's lock-on in first person.
+
+### Resumed 2026-09-29
 
 The owner, 2026-09-29: "work on completing the better third person camera project ... incorporate better third person
 selection into that mod and also add on a contextual crosshair that hides the crosshair optionally" - CCM, keeping the

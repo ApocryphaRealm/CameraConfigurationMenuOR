@@ -266,6 +266,11 @@ namespace page
 			if (Switch(TR("FaceWhileHeld", "Keep facing while block or attack is held"), &s.faceWhileHeld)) Changed();
 			ImGui::EndDisabled();
 			ImGui::BeginDisabled(s.cameraStyle == 0);
+			if (precise::SliderFloat(TR("BodyTurnSpeed", "How fast your character turns"), &s.bodyTurnSpeed, 0.0f, 1440.0f,
+					s.bodyTurnSpeed <= 0.0f ? TR("GameValue", "the game's") : "%.0f degrees/s")) Changed();
+			Hint(TR("BodyTurnSpeedHint", "With the free camera in third person: how quickly your character turns toward where you move and to face the camera. Far left = the game's own speed."));
+			ImGui::EndDisabled();
+			ImGui::BeginDisabled(s.cameraStyle == 0);
 			if (Switch(TR("FaceWhileLockedOn", "Face the camera while Ultimate Combat is locked on"), &s.faceWhileLockedOn)) Changed();
 			Hint(TR("FaceWhileLockedOnHint", "No free camera while a target is locked, so dodges go where you expect."));
 			ImGui::EndDisabled();

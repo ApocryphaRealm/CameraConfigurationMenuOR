@@ -2449,6 +2449,30 @@ TABLE = {
         "Pokazuj nazwę celu",
         "Zobrazit jméno cíle",
     ],
+    "BodyTurnSpeed": [
+        "キャラクターの回転速度",
+        "캐릭터 회전 속도",
+        "角色转身速度",
+        "Скорость поворота персонажа",
+        "Wie schnell sich deine Figur dreht",
+        "Vitesse de rotation du personnage",
+        "Velocidad de giro del personaje",
+        "Velocità di rotazione del personaggio",
+        "Szybkość obrotu postaci",
+        "Rychlost otáčení postavy",
+    ],
+    "BodyTurnSpeedHint": [
+        "三人称のフリーカメラで、キャラクターが移動方向やカメラの方へ向き直る速さ。左端 = ゲーム本来の速さ。",
+        "3인칭 자유 카메라에서 캐릭터가 이동 방향과 카메라 쪽으로 돌아서는 속도입니다. 맨 왼쪽 = 게임 본래 속도.",
+        "第三人称自由镜头下，角色转向移动方向和转向镜头的速度。最左端 = 游戏自带的速度。",
+        "Со свободной камерой от третьего лица: как быстро персонаж поворачивается туда, куда идёт, и лицом к камере. Крайнее левое положение = скорость игры.",
+        "Mit der freien Kamera in der dritten Person: wie schnell sich deine Figur in Laufrichtung und zur Kamera dreht. Ganz links = die eigene Geschwindigkeit des Spiels.",
+        "Avec la caméra libre à la troisième personne : la vitesse à laquelle votre personnage se tourne vers où il va et face à la caméra. Tout à gauche = la vitesse du jeu.",
+        "Con la cámara libre en tercera persona: lo rápido que tu personaje gira hacia donde se mueve y hacia la cámara. Del todo a la izquierda = la velocidad del juego.",
+        "Con la telecamera libera in terza persona: quanto velocemente il personaggio si gira verso dove si muove e verso la telecamera. Tutto a sinistra = la velocità del gioco.",
+        "Z wolną kamerą w trzeciej osobie: jak szybko postać obraca się w stronę ruchu i przodem do kamery. Skrajnie w lewo = prędkość gry.",
+        "S volnou kamerou z pohledu třetí osoby: jak rychle se postava otáčí ve směru pohybu a čelem ke kameře. Úplně vlevo = rychlost hry.",
+    ],
 }
 
 for _family, _names in {

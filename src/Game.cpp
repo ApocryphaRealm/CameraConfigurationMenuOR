@@ -210,6 +210,47 @@ namespace game
 			g_lockUntil = 0.0;
 		}
 
+		// [General] fBodyTurnSpeed (the owner, 2026-10-01: "I want the player's body to turn faster. With the free camera"):
+		// the movement component's RotationRate.Yaw - what both turning toward where you move (bOrientRotationToMovement)
+		// and turning to face the camera (bUseControllerDesiredRotation) use. The game sets its own per state (420.9 walking
+		// free, 720 facing the camera - read live), so it is written every tick while the free camera runs in third person;
+		// a value that is not ours is the game's new one, kept to put back when the setting stops applying.
+		struct BodyTurn
+		{
+			UE::UObject* move = nullptr;   // the component it was applied to (a load brings a new one)
+			bool         applied = false;
+			double       game = 0.0;       // the game's own yaw rate, last seen
+			double       ours = 0.0;
+		} g_bodyTurn;
+
+		void ApplyBodyTurn(const Objects& o, bool a_on, float a_speed)
+		{
+			if (o.move != g_bodyTurn.move) g_bodyTurn = { .move = o.move };
+			if (!o.move) return;
+			const auto& p = Find(o.move, "RotationRate");
+			auto        r = GetVec(o.move, p);   // FRotator: pitch, yaw, roll
+			if (a_on && a_speed > 0.0f) {
+				if (!g_bodyTurn.applied || std::abs(r[1] - g_bodyTurn.ours) > 0.01) {
+					if (!g_bodyTurn.applied || std::abs(r[1] - g_bodyTurn.game) > 0.01) logger::debug("body turn: the game's own rate is {:.1f} degrees/s", r[1]);
+					g_bodyTurn.game = r[1];
+				}
+				if (std::abs(r[1] - a_speed) > 0.01) {
+					r[1] = a_speed;
+					SetVec(o.move, p, r);
+				}
+				if (!g_bodyTurn.applied) logger::info("body turn: {:.0f} degrees/s (the game's {:.1f})", a_speed, g_bodyTurn.game);
+				g_bodyTurn.ours = a_speed;
+				g_bodyTurn.applied = true;
+			} else if (g_bodyTurn.applied) {
+				if (std::abs(r[1] - g_bodyTurn.ours) <= 0.01) {   // still ours: the game's own back (else the game has set its own)
+					r[1] = g_bodyTurn.game;
+					SetVec(o.move, p, r);
+				}
+				logger::info("body turn: the game's own rate again ({:.1f} degrees/s)", g_bodyTurn.game);
+				g_bodyTurn.applied = false;
+			}
+		}
+
 		void RunActions(const Objects& o, settings::Values& a_s)
 		{
 			std::vector<Action> todo;
@@ -422,6 +463,7 @@ namespace game
 				}
 				g_wroteSwitches = true;
 			}
+			ApplyBodyTurn(o, styleFree && !firstPerson && o.arm && o.move, s.bodyTurnSpeed);
 			StartZoomedOut(a_pawn, o.ctrl, s);
 			camrows::Tick(s.enabled, g_shoulderLeft);   // Aiming a bow, in the game's own camera table
 			shake::Update(s.enabled && !s.smSprintShake);   // "Screen shake while sprinting" off = the sprint shakes silenced

@@ -45,6 +45,12 @@ Two of the 1.0.0 page's known issues, at the owner's request (relayed 2026-10-01
   "Load the next preset" (key and controller button), loads the saved slots in turn; ccm.drive takes `nextPreset`.
 
 ### Fixed
+- [General] fBodyTurnSpeed did nothing - nothing read it, and it had no row on the page. Now, while the free camera
+  runs in third person, it sets the movement component's RotationRate.Yaw every tick (the game sets its own per state:
+  420.9 walking free, 720 facing the camera, read live), so it covers turning toward where you move and turning to
+  face the camera; the game's own rate is put back when it stops applying. On the Camera tab as "How fast your
+  character turns" (a precise slider, far left = the game's). The owner, 2026-10-01: "I want the player's body to turn
+  faster. With the free camera." The default stays 0 (the game's) until he settles on his value in game.
 - **The crosshair while aiming a bow** (1.0.0's known issue). The crosshair image's material, MIC_CrossHair_SneakEye
   (read from the paks with uetex --params), draws the ranged reticle by its BowDrawAlpha scalar, which defaults to 0 -
   so the reticle stayed invisible while a bow was drawn whatever opacity CCM gave the image. While CCM shows the

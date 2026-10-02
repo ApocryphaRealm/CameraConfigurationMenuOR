@@ -18,25 +18,25 @@ namespace settings
 	{
 		// [General] - plan 7.1
 		bool        enabled = true;
-		std::int32_t cameraStyle = 1;   // the owner, 2026-09-28: "Default to free cam"
+		std::int32_t cameraStyle = 0;   // the game's camera (the owner, 2026-10-02: true vanilla defaults; his tuning is the ApocryphaRealm preset; was 1, free cam)
 		float       blockTurnSeconds = 0.20f;
 		float       spellTurnSeconds = 1.40f;
 		float       attackTurnSeconds = 0.60f;
 		bool        faceWhileHeld = false;
 		bool        faceWhileLockedOn = true;   // Ultimate Combat Redux's lock-on: the body faces the camera (its dodge needs it)
-		float       bodyTurnPercent = 175.0f;   // the game's own turn speed scaled (its rotation-speed curve), 100 = the game's; 175 the owner's (2026-10-01)
-		bool        compassFollowsCamera = true;
+		float       bodyTurnPercent = 100.0f;   // the game's own turn speed scaled (its rotation-speed curve), 100 = the game's (175 is in the ApocryphaRealm preset)
+		bool        compassFollowsCamera = false;   // free camera only; on in the ApocryphaRealm preset
 		bool        freeCameraOnHorse = false;
 		bool        standDownInDialogue = true;
 		bool        conversationFirstPerson = false;   // first person while a conversation runs, the previous view after
-		bool        conversationLockOnSpeaker = true;  // the camera aims at the person spoken to, whatever offset CCM adds
+		bool        conversationLockOnSpeaker = false; // the camera aims at the person spoken to, whatever offset CCM adds (on in ApocryphaRealm)
 		bool        conversationFirstPersonNoOffset = true;   // first person in a conversation: no Conversation offset added
 		bool        standDownSitting = true;
 		bool        vanityCamera = true;
 
 		// [Zoom] - the game's two third-person zooms, EVPlayerPOVType ThirdPersonClose (1) and ThirdPersonFar (2) (the owner,
 		// 2026-09-29: "when you load into the game you're already fully zoomed out ... sliders for both zoom settings")
-		bool        startZoomedOut = true;      // after a load, the far zoom instead of the close one
+		bool        startZoomedOut = false;     // after a load, the far zoom instead of the close one (on in ApocryphaRealm)
 		bool        ownZoomDistances = false;   // the two distances below replace the game's own
 		float       zoomCloseDistance = 170.0f; // cm behind the character (the game's close zoom read 170 with a weapon drawn, probe P2)
 		float       zoomFarDistance = 310.0f;   // cm (the game's far zoom read 310)
@@ -105,12 +105,12 @@ namespace settings
 		float        smFollowSpeed = -1.0f;    // the arm's CameraLagSpeed, 0 = rigid (no position smoothing), -1 = the game's
 		float        smMaxLagDistance = -1.0f; // the arm's CameraLagMaxDistance, 0 = no limit
 		float        smRotationPitch = -1.0f;  // the arm's CameraRotationLagSpeedPitch, 0 = no rotation smoothing
-		float        smRotationYaw = 10.0f;    // the arm's CameraRotationLagSpeedYaw; 10 is the owner's (2026-10-01: "that's the new default")
+		float        smRotationYaw = -1.0f;    // the arm's CameraRotationLagSpeedYaw, -1 = the game's (10 is the owner's, in ApocryphaRealm)
 		bool         smSprintShake = true;     // "Screen shake while sprinting" (the owner's name): 1 = the game's shake, 0 = a steady camera
 		float        smStateBlendSeconds = -1.0f;   // TransitionDuration: the blend between the game's camera states
 
 		// [Selection] - Better Third-Person Selection 1.0.0, merged (plan 13.2; the owner's defaults, 2026-09-29)
-		bool  selEnabled = true;
+		bool  selEnabled = false;     // the game's own pick; on in the ApocryphaRealm preset
 		bool  selThirdPerson = true;
 		bool  selFirstPerson = false;
 		bool  selShowMarker = true;
@@ -127,7 +127,7 @@ namespace settings
 		float xhFadeSeconds = 0.15f;  // how long it takes to fade in or out
 
 		// [Presets]
-		std::int32_t activePreset = 0;   // 0 = none, 1-6 = the user slots
+		std::int32_t activePreset = -1;  // 1-6 = the user slots, 0 = none, -1..-4 = the built-ins (Vanilla, Player Camera, Player Camera Alt, ApocryphaRealm); Vanilla is selected on a fresh install
 
 		// [Log]
 		std::int32_t logLevel = 2;   // info (rule 14, amended 2026-09-26)
@@ -168,14 +168,16 @@ namespace settings
 	// Six user slots, each <plugin folder>\CameraConfigurationMenu\Presets\Slot<n>.ini in the main INI's own format, with
 	// a [Preset] sName. A preset holds the camera's look: [General] (all but bEnabled), [Zoom], every [Framing.*] and
 	// [Smoothing] - never the keys, the selection, the crosshair or the log, so loading one never rebinds anything. Three
-	// built-ins are compiled in (Vanilla = style 0, Player Camera = 1, Player Camera Alt = 2, all with zero offsets and the
-	// game's smoothing). The slot loaded last is [Presets] iActive (0 = a built-in or none).
+	// built-ins are compiled in: Vanilla (CCM's defaults - the game's values throughout, lock-on on), Player Camera and Player
+	// Camera Alt (the same with the free camera styles), and ApocryphaRealm (the owner's own setup - the defaults CCM shipped
+	// with until 2026-10-02). The preset loaded last is [Presets] iActive (1-6 a slot, -1..-4 a built-in, 0 none).
 	inline constexpr int kPresetSlots = 6;
 	bool        PresetExists(int a_slot);                          // a_slot 1..6
 	std::string PresetName(int a_slot);                            // its sName, or "" when empty
 	bool        SavePreset(int a_slot, const std::string& a_name); // the current values into the slot
 	bool        LoadPreset(int a_slot);                            // applies it, sets iActive, saves the main INI
 	bool        ClearPreset(int a_slot);                           // removes the slot's file (the player's own button)
-	void        LoadBuiltin(int a_style);                          // 0 Vanilla, 1 Player Camera, 2 Player Camera Alt
+	inline constexpr int kBuiltins = 4;
+	void        LoadBuiltin(int a_index);                          // 0 Vanilla, 1 Player Camera, 2 Player Camera Alt, 3 ApocryphaRealm
 	int         NextPreset();                                      // the next non-empty slot after the active one, loaded; 0 when none
 }

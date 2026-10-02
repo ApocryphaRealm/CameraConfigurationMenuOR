@@ -3,6 +3,29 @@
 Written as changes happen, not reconstructed afterwards (rule 61). Started 2026-09-29; the history before this file is
 in `git log`. A version number is issued by the version gate only once a build is seen working in game (rule 48).
 
+## 1.0.2 - 2026-10-02 - working (the owner waived the in-game test)
+
+A Nexus user complained that CCM's defaults were not the game's. The owner's decision: "include its current defaults as
+an included preset named after me as Apocrypha Realm and have a true vanilla preset that comes already selected with all
+the game values defaulted completely and anything they want changed they'll have to change themselves or load my
+preset", then "Let's say we keep the lock on defaulted to on", and: "you shouldn't need to test it in game because
+these are just setting the default game values as the starting values and assigning the current values to a preset
+which shouldn't need confirming in game as it's already all confirmed ... as soon as that's updated post it to Nexus".
+
+### Changed
+- Compiled defaults and the shipped INI (one table, rule 16) are the game's values: [General] iCameraStyle 0 (was 1),
+  fBodyTurnPercent 100 (was 175), bCompassFollowsCamera 0 (was 1); [Zoom] bStartZoomedOut 0 (was 1);
+  [Framing.Conversation] bLockOnSpeaker 0 (was 1); [Smoothing] fRotationSpeedYaw -1 = the game's (was 10);
+  [Selection] bEnabled 0 (was 1). The lock-on stays on. [Presets] iActive -1 = Vanilla (was 0).
+- Built-in presets: Vanilla now equals the defaults exactly (it kept 175% / zoomed-out start / the compass before) and
+  also sets the selection rows; it is the one selected on a fresh install. iActive -1..-4 names a built-in, and the
+  Presets page shows it as the active preset.
+
+### Added
+- The ApocryphaRealm built-in preset: the 1.0.1 defaults verbatim (free camera, 175% turn, compass follows, zoomed-out
+  start, yaw smoothing 10, conversation held on the speaker, selection on). Its name and the new built-ins hint in all
+  eleven languages (tools/translations.py).
+
 ## 1.0.1 - 2026-10-01 - working
 
 Confirmed by the owner in game on 0ab34ee (DLL sha1 bfde9ef6622d): the lock-on with all its releases and aim point by

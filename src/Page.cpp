@@ -467,19 +467,22 @@ namespace page
 				}
 			}
 			Hint(TR("PresetsIntro", "A preset holds the camera's look: the style, the framing, the zoom and the smoothing. Loading one never changes your keys, selection or crosshair settings."));
+			const char* builtins[settings::kBuiltins] = { TR("PresetVanilla", "Vanilla"), TR("PresetPlayerCamera", "Player Camera"),
+				TR("PresetPlayerCameraAlt", "Player Camera Alt"), TR("PresetApocryphaRealm", "ApocryphaRealm") };
+			const int  activeBuiltin = s.activePreset < 0 ? -s.activePreset - 1 : -1;
 			ImGui::Text("%s: %s", TR("PresetActive", "Active preset"),
+				activeBuiltin >= 0 && activeBuiltin < settings::kBuiltins ? builtins[activeBuiltin] :
 				s.activePreset > 0 && settings::PresetExists(s.activePreset) ? settings::PresetName(s.activePreset).c_str() : TR("PresetNone", "none"));
 
 			ImGui::SeparatorText(TR("PresetsBuiltIn", "Built-in"));
-			const char* builtins[3] = { TR("PresetVanilla", "Vanilla"), TR("PresetPlayerCamera", "Player Camera"), TR("PresetPlayerCameraAlt", "Player Camera Alt") };
-			for (int b = 0; b < 3; ++b) {
+			for (int b = 0; b < settings::kBuiltins; ++b) {
 				if (b > 0) ImGui::SameLine();
 				if (ImGui::Button(builtins[b])) {
 					settings::LoadBuiltin(b);
 					g_presetMsg = std::format("{}: {}", builtins[b], TR("PresetLoaded", "loaded"));
 				}
 			}
-			Hint(TR("PresetsBuiltInHint", "Vanilla: the game's own camera. Player Camera: the free camera. Player Camera Alt: the free camera only with the weapon sheathed. All three with no offsets and the game's own smoothing."));
+			Hint(TR("PresetsBuiltInHint2", "Vanilla (selected when CCM is installed): the game's own values throughout, with the lock-on on. Player Camera: the same with the free camera. Player Camera Alt: the free camera only with the weapon sheathed. ApocryphaRealm: the mod author's own setup - the free camera, a faster body turn, the far zoom after a load and the third-person selection."));
 
 			ImGui::SeparatorText(TR("PresetsSlots", "Your presets"));
 			if (ImGui::BeginTable("##ccmpresets", 4, ImGuiTableFlags_SizingStretchProp)) {

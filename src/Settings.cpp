@@ -18,19 +18,19 @@ namespace settings
 		// ONE ROW PER LINE - tools/write-ini.py parses these rows to write the shipped INI.
 		const std::vector<Field> kTable = {
 			CCM_ROW("General", "bEnabled", kBool, enabled, 1, 0, 1, "1 = CCM runs. 0 puts back the game's own camera values that CCM recorded."),
-			CCM_ROW("General", "iCameraStyle", kInt, cameraStyle, 1, 0, 2, "0 = the game's camera, 1 = free camera (turn to face on block, cast and attack), 2 = free camera only with the weapon sheathed."),
+			CCM_ROW("General", "iCameraStyle", kInt, cameraStyle, 0, 0, 2, "0 = the game's camera, 1 = free camera (turn to face on block, cast and attack), 2 = free camera only with the weapon sheathed."),
 			CCM_ROW("General", "fBlockTurnSeconds", kFloat, blockTurnSeconds, 0.20, 0, 3, "Seconds the body keeps facing the camera after a block starts (free camera style)."),
 			CCM_ROW("General", "fSpellTurnSeconds", kFloat, spellTurnSeconds, 1.40, 0, 3, "Seconds the body keeps facing the camera after a spell cast starts."),
 			CCM_ROW("General", "fAttackTurnSeconds", kFloat, attackTurnSeconds, 0.60, 0, 3, "Seconds the body keeps facing the camera after an attack or bow shot starts."),
 			CCM_ROW("General", "bFaceWhileHeld", kBool, faceWhileHeld, 0, 0, 1, "1 = keep facing the camera for as long as block or the attack button is held."),
 			CCM_ROW("General", "bFaceWhileLockedOn", kBool, faceWhileLockedOn, 1, 0, 1, "1 = while Ultimate Combat is locked on to a target, no free camera: the body faces where the camera looks (the dodge directions need it)."),
-			CCM_ROW("General", "fBodyTurnPercent", kFloat, bodyTurnPercent, 175, 50, 400, "How fast your character turns in third person with the free camera, in percent of the game's own turn speed (toward where you move and to face the camera). 100 = the game's."),
-			CCM_ROW("General", "bCompassFollowsCamera", kBool, compassFollowsCamera, 1, 0, 1, "1 = the compass shows where the camera looks, not where the body faces (free camera only)."),
+			CCM_ROW("General", "fBodyTurnPercent", kFloat, bodyTurnPercent, 100, 50, 400, "How fast your character turns in third person with the free camera, in percent of the game's own turn speed (toward where you move and to face the camera). 100 = the game's."),
+			CCM_ROW("General", "bCompassFollowsCamera", kBool, compassFollowsCamera, 0, 0, 1, "1 = the compass shows where the camera looks, not where the body faces (free camera only)."),
 			CCM_ROW("General", "bFreeCameraOnHorse", kBool, freeCameraOnHorse, 0, 0, 1, "1 = the free camera also on horseback."),
 			CCM_ROW("General", "bStandDownInDialogue", kBool, standDownInDialogue, 1, 0, 1, "1 = the game's own camera during dialogue."),
 			CCM_ROW("General", "bStandDownSitting", kBool, standDownSitting, 1, 0, 1, "1 = the game's own camera while sitting or using furniture."),
 			CCM_ROW("General", "bVanityCamera", kBool, vanityCamera, 1, 0, 1, "1 = the game's idle camera that circles the player after a while without input; 0 = it never starts."),
-			CCM_ROW("Zoom", "bStartZoomedOut", kBool, startZoomedOut, 1, 0, 1, "1 = after loading a game the camera starts at the far third-person zoom instead of the close one."),
+			CCM_ROW("Zoom", "bStartZoomedOut", kBool, startZoomedOut, 0, 0, 1, "1 = after loading a game the camera starts at the far third-person zoom instead of the close one."),
 			CCM_ROW("Zoom", "bOwnDistances", kBool, ownZoomDistances, 0, 0, 1, "1 = the two zoom distances below replace the game's own (not while aiming a bow or in a conversation)."),
 			CCM_ROW("Zoom", "fCloseDistance", kFloat, zoomCloseDistance, 170, 50, 800, "The close third-person zoom: how far behind the character the camera sits, in cm."),
 			CCM_ROW("Zoom", "fFarDistance", kFloat, zoomFarDistance, 310, 50, 1200, "The far third-person zoom, in cm."),
@@ -110,7 +110,7 @@ namespace settings
 			CCM_ROW("Framing.Horseback", "fDistance", kFloat, fmGroups[7].distance, 0, -300, 600, ""),
 			CCM_ROW("Framing.Conversation", "bFirstPerson", kBool, conversationFirstPerson, 0, 0, 1, "1 = the game's own conversation view, which is first person, with nothing added; 0 = the position below moves it."),
 			CCM_ROW("Framing.Conversation", "bFirstPersonNoOffset", kBool, conversationFirstPersonNoOffset, 1, 0, 1, "1 = with first person in conversations, the offsets below are not added, so you look straight at the person you talk to."),
-			CCM_ROW("Framing.Conversation", "bLockOnSpeaker", kBool, conversationLockOnSpeaker, 1, 0, 1, "1 = in third person the camera stays aimed at the person you are talking to, whatever offset is added."),
+			CCM_ROW("Framing.Conversation", "bLockOnSpeaker", kBool, conversationLockOnSpeaker, 0, 0, 1, "1 = in third person the camera stays aimed at the person you are talking to, whatever offset is added."),
 			CCM_ROW("Framing.Conversation", "bOwn", kBool, fmGroups[8].own, 0, 0, 1, "In a conversation - above every other context. 1 = the position below moves the game's conversation camera; 0 = the game's own."),
 			CCM_ROW("Framing.Conversation", "fSide", kFloat, fmGroups[8].side, 0, -150, 150, ""),
 			CCM_ROW("Framing.Conversation", "fHeight", kFloat, fmGroups[8].height, 0, -100, 150, ""),
@@ -122,10 +122,10 @@ namespace settings
 			CCM_ROW("Smoothing", "fFollowSpeed", kFloat, smFollowSpeed, -1, -1, 30, "How tightly the camera follows your character's movement: higher is tighter, 0 = no smoothing. -1 = the game's."),
 			CCM_ROW("Smoothing", "fMaxLagDistance", kFloat, smMaxLagDistance, -1, -1, 500, "The furthest the camera may trail behind, in centimetres. 0 = no limit, -1 = the game's."),
 			CCM_ROW("Smoothing", "fRotationSpeedPitch", kFloat, smRotationPitch, -1, -1, 30, "How tightly the camera follows looking up and down: higher is tighter, 0 = no smoothing. -1 = the game's."),
-			CCM_ROW("Smoothing", "fRotationSpeedYaw", kFloat, smRotationYaw, 10, -1, 30, "How tightly the camera follows turning left and right. -1 = the game's."),
+			CCM_ROW("Smoothing", "fRotationSpeedYaw", kFloat, smRotationYaw, -1, -1, 30, "How tightly the camera follows turning left and right. -1 = the game's."),
 			CCM_ROW("Smoothing", "bSprintShake", kBool, smSprintShake, 1, 0, 1, "Screen shake while sprinting: 1 = the game's shake, 0 = a steady camera."),
 			CCM_ROW("Smoothing", "fStateBlendSeconds", kFloat, smStateBlendSeconds, -1, -1, 5, "Seconds the game takes to blend between its camera states (walking, sprinting, weapon drawn...). -1 = the game's."),
-			CCM_ROW("Selection", "bEnabled", kBool, selEnabled, 1, 0, 1, "1 = use what you are roughly looking at: anything within reach and angle, closest to the aim first. The crosshair's own target always wins."),
+			CCM_ROW("Selection", "bEnabled", kBool, selEnabled, 0, 0, 1, "1 = use what you are roughly looking at: anything within reach and angle, closest to the aim first. The crosshair's own target always wins."),
 			CCM_ROW("Selection", "bThirdPerson", kBool, selThirdPerson, 1, 0, 1, "1 = in third person."),
 			CCM_ROW("Selection", "bFirstPerson", kBool, selFirstPerson, 0, 0, 1, "1 = also in first person (the game's precise aim otherwise)."),
 			CCM_ROW("Selection", "bShowMarker", kBool, selShowMarker, 1, 0, 1, "1 = the name of what Activate will use is drawn where it stands."),
@@ -138,7 +138,7 @@ namespace settings
 			CCM_ROW("Crosshair", "bWhenWeaponDrawn", kBool, xhWhenWeaponDrawn, 0, 0, 1, "Contextual: shown while a weapon is drawn."),
 			CCM_ROW("Crosshair", "bInFirstPerson", kBool, xhInFirstPerson, 1, 0, 1, "Contextual: always shown in first person."),
 			CCM_ROW("Crosshair", "fFadeSeconds", kFloat, xhFadeSeconds, 0.15, 0, 2, "Seconds the crosshair takes to fade in or out."),
-			CCM_ROW("Presets", "iActive", kInt, activePreset, 0, 0, 6, "The preset slot loaded last (1-6), 0 = none."),
+			CCM_ROW("Presets", "iActive", kInt, activePreset, -1, -4, 6, "The preset loaded last: 1-6 = your slots, -1 = Vanilla (the game's camera, as shipped), -2 = Player Camera, -3 = Player Camera Alt, -4 = ApocryphaRealm, 0 = none."),
 			CCM_ROW("Log", "uLogLevel", kInt, logLevel, 2, 0, 6, "0 trace, 1 debug, 2 info, 3 warnings, 4 errors, 5 critical, 6 off. Use 1 when reporting a problem."),
 		};
 #undef CCM_ROW
@@ -569,19 +569,38 @@ namespace settings
 		return removed;
 	}
 
-	void LoadBuiltin(int a_style)
+	void LoadBuiltin(int a_index)
 	{
 		if (g_tableBroken) return;
+		const int b = std::clamp(a_index, 0, kBuiltins - 1);
+		// Every built-in starts from CCM's defaults, which are the game's values (the owner, 2026-10-02: "a true vanilla preset
+		// that comes already selected with all the game values defaulted completely"). Vanilla and ApocryphaRealm also set the
+		// selection rows - a user slot never holds them, a built-in that promises "the game's values" or "the owner's setup" must.
 		const Values d{};
 		for (const auto& f : kTable) {
-			if (InPreset(f)) Write(g_values, f, Read(d, f));
+			const bool selection = std::string_view(f.section) == "Selection";
+			if (InPreset(f) || (selection && (b == 0 || b == 3))) Write(g_values, f, Read(d, f));
 		}
-		g_values.cameraStyle = std::clamp(a_style, 0, 2);
-		g_values.smRotationYaw = -1.0f;   // the built-ins keep the game's smoothing, though CCM's own default follows turning at 10
-		g_values.activePreset = 0;
+		switch (b) {
+		case 1: g_values.cameraStyle = 1; break;
+		case 2: g_values.cameraStyle = 2; break;
+		case 3:
+			// ApocryphaRealm: the owner's own setup - exactly the defaults CCM shipped with until 2026-10-02 (1.0.1)
+			g_values.cameraStyle = 1;                       // the free camera ("Default to free cam", 2026-09-28)
+			g_values.bodyTurnPercent = 175.0f;              // "Maybe set the default to 175" (2026-10-01)
+			g_values.compassFollowsCamera = true;
+			g_values.startZoomedOut = true;                 // 2026-09-29: "when you load into the game you're already fully zoomed out"
+			g_values.smRotationYaw = 10.0f;                 // 2026-10-01: "that's the new default"
+			g_values.conversationLockOnSpeaker = true;
+			g_values.selEnabled = true;                     // Better Third-Person Selection merged on (2026-09-29)
+			break;
+		default: break;
+		}
+		g_values.activePreset = -(b + 1);
 		Save();
-		logger::info("presets: built-in {} loaded (style {}, zero offsets, the game's smoothing)",
-			a_style == 0 ? "Vanilla" : a_style == 1 ? "Player Camera" : "Player Camera Alt", g_values.cameraStyle);
+		static constexpr const char* kNames[kBuiltins] = { "Vanilla", "Player Camera", "Player Camera Alt", "ApocryphaRealm" };
+		logger::info("presets: built-in {} loaded (style {}, turn {:.0f}%, yaw smoothing {:.0f}, selection {})", kNames[b],
+			g_values.cameraStyle, g_values.bodyTurnPercent, g_values.smRotationYaw, g_values.selEnabled);
 	}
 
 	int NextPreset()
